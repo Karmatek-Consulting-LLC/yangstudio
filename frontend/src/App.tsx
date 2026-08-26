@@ -186,14 +186,7 @@ export default function App() {
             }}
           />
         ) : null}
-        {page === 'devices' ? (
-          <Devices
-            onOpenSet={(slug) => {
-              setYangsetSlug(slug)
-              setPage('explore')
-            }}
-          />
-        ) : null}
+        {page === 'devices' ? <Devices /> : null}
       </main>
 
       {/* Background work is visible from every page, not just where it started. */}
