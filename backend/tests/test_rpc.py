@@ -97,3 +97,47 @@ def test_unknown_operation_rejected():
         build_rpc(
             RpcRequest(operation="frobnicate", selections=[Selection(xpath="/a")])
         )
+
+
+# -- datastore operations --------------------------------------------------
+
+def test_commit_needs_no_selection():
+    """Many devices refuse a write to running, so commit is the only way to apply."""
+    xml = build_rpc(RpcRequest(operation="commit"))
+    assert _parse(xml).find(f"{{{NC}}}commit") is not None
+
+
+def test_confirmed_commit_carries_a_timeout():
+    """The safety net for a change that could cut off your own access."""
+    root = _parse(build_rpc(RpcRequest(operation="commit", confirmed_timeout=120)))
+    commit = root.find(f"{{{NC}}}commit")
+    assert commit.find(f"{{{NC}}}confirmed") is not None
+    assert commit.find(f"{{{NC}}}confirm-timeout").text == "120"
+
+
+def test_plain_commit_has_no_confirmed_element():
+    commit = _parse(build_rpc(RpcRequest(operation="commit"))).find(f"{{{NC}}}commit")
+    assert commit.find(f"{{{NC}}}confirmed") is None
+
+
+def test_discard_changes():
+    assert _parse(build_rpc(RpcRequest(operation="discard-changes"))).find(
+        f"{{{NC}}}discard-changes"
+    ) is not None
+
+
+def test_validate_names_its_source_datastore():
+    root = _parse(build_rpc(RpcRequest(operation="validate", datastore="candidate")))
+    assert root.find(f".//{{{NC}}}validate/{{{NC}}}source/{{{NC}}}candidate") is not None
+
+
+def test_lock_and_unlock_target_a_datastore():
+    for op in ("lock", "unlock"):
+        root = _parse(build_rpc(RpcRequest(operation=op, datastore="candidate")))
+        assert root.find(f".//{{{NC}}}{op}/{{{NC}}}target/{{{NC}}}candidate") is not None
+
+
+def test_an_edit_still_requires_a_selection():
+    """Only datastore operations are exempt."""
+    with pytest.raises(RpcError, match="no nodes selected"):
+        build_rpc(RpcRequest(operation="edit-config"))

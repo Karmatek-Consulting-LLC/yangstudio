@@ -110,7 +110,7 @@ Everything is optional.
 | `YANGSTUDIO_DATA` | `~/.yangstudio` | Repositories, sets and device profiles |
 | `YANGSTUDIO_HOST` | `127.0.0.1` | Bind address (`0.0.0.0` in the container) |
 | `YANGSTUDIO_PORT` | `8420` | API and UI port |
-| `YANGSTUDIO_RPC_TIMEOUT` | `60` | Seconds to wait for a NETCONF reply |
+| `YANGSTUDIO_RPC_TIMEOUT` | `60` | Seconds to wait for a NETCONF reply. A commit on a busy device can take most of this |
 | `YANGSTUDIO_CORS` | `localhost:5173` | Allowed origins, comma-separated |
 | `YANGSTUDIO_STATIC` | auto | Path to the built frontend |
 | `YANGSTUDIO_UI_PORT` | `5173` | Vite dev server port (development only) |
@@ -128,6 +128,11 @@ Everything is optional.
 4. **Explore** → pick the set. Click a node to inspect it, <kbd>Space</kbd> to
    add it to a request.
 5. Choose NETCONF or RESTCONF, pick the device, **Run**.
+
+Many devices refuse a direct write to `running` — IOS-XR and Junos always,
+IOS-XE once `candidate-datastore` is enabled. There the flow is edit into
+`candidate`, then **Commit**. YANG Studio says when a change is staged rather
+than applied, so a successful-looking reply never implies the device changed.
 
 If a set will not parse, the app names the missing imports and offers to fetch
 them — the device advertises those too.
@@ -165,7 +170,7 @@ modules index in ~0.3 s; full parsing happens when you open a set.
 ## Development
 
 ```bash
-cd backend  && ./.venv/bin/python -m pytest -q    # 98 tests
+cd backend  && ./.venv/bin/python -m pytest -q    # 105 tests
 cd backend  && ./.venv/bin/python -m ruff check .
 cd frontend && npm run build                      # typecheck + build
 ```

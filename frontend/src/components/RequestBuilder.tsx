@@ -6,7 +6,7 @@
  */
 import { useMutation } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { Play, Send, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Play, Send, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { CodeView } from './CodeView'
@@ -18,7 +18,14 @@ import type { Device, RestResult, RpcResult, Selection } from '@/lib/types'
 
 const READ_OPS = ['get', 'get-config'] as const
 const EDIT_OPS = ['edit-config'] as const
-const NETCONF_OPERATIONS = [...READ_OPS, ...EDIT_OPS, 'rpc'] as const
+// Datastore operations act on a whole datastore, not on selected nodes. Many
+// devices refuse a direct write to running (IOS-XR and Junos always, IOS-XE
+// with candidate-datastore enabled), so without commit an edit is composed,
+// sent, and then silently dropped when the session ends.
+const DATASTORE_OPS = ['commit', 'discard-changes', 'validate'] as const
+const NETCONF_OPERATIONS = [...READ_OPS, ...EDIT_OPS, ...DATASTORE_OPS, 'rpc'] as const
+
+const needsSelection = (op: string) => !(DATASTORE_OPS as readonly string[]).includes(op)
 // RESTCONF speaks HTTP methods, so offer those rather than silently translating.
 const RESTCONF_OPERATIONS = ['GET', 'PATCH', 'PUT', 'POST', 'DELETE'] as const
 
@@ -53,6 +60,7 @@ export function RequestBuilder({
   // mapping between them is the thing worth learning.
   const [protocol, setProtocol] = useState<'netconf' | 'restconf'>('netconf')
   const [restResults, setRestResults] = useState<RestResult[] | null>(null)
+  const [staged, setStaged] = useState(false)
 
   const isEdit = operation === 'edit-config'
 
@@ -60,7 +68,7 @@ export function RequestBuilder({
   // active protocol: the operation list differs, and sending an HTTP method to
   // the NETCONF builder just produces a spurious error.
   useEffect(() => {
-    if (protocol !== 'netconf' || selections.length === 0) {
+    if (protocol !== 'netconf' || (selections.length === 0 && needsSelection(operation))) {
       setXml('')
       setBuildError('')
       return
@@ -91,6 +99,9 @@ export function RequestBuilder({
     onSuccess: (r) => {
       setResult(r)
       setTab('response')      // You ran it to see this.
+      // An edit into candidate is staged, not applied. Say so, rather than
+      // letting a successful-looking reply imply the device changed.
+      setStaged(r.ok && operation === 'edit-config' && datastore === 'candidate')
       onRan?.()
     },
     onError: (error: unknown) => {
@@ -102,6 +113,20 @@ export function RequestBuilder({
       setTab('response')
       onRan?.()
     },
+  })
+
+  // Commit and discard need no selection, so they bypass the normal builder.
+  const runDatastoreOp = (op: string) =>
+    api.runRpc({ device, operation: op, datastore: 'candidate', selections: [], namespaces })
+
+  const runCommit = useMutation({
+    mutationFn: () => runDatastoreOp('commit'),
+    onSuccess: (r) => { setResult(r); setTab('response'); onRan?.() },
+  })
+
+  const runDiscard = useMutation({
+    mutationFn: () => runDatastoreOp('discard-changes'),
+    onSuccess: (r) => { setResult(r); setTab('response'); onRan?.() },
   })
 
   const runRest = useMutation({
@@ -148,7 +173,8 @@ export function RequestBuilder({
           ))}
         </select>
 
-        {protocol === 'netconf' && operation !== 'rpc' && operation !== 'get' ? (
+        {protocol === 'netconf' && operation !== 'rpc' && operation !== 'get'
+          && operation !== 'commit' && operation !== 'discard-changes' ? (
           <select
             value={datastore}
             onChange={(e) => setDatastore(e.target.value)}
@@ -200,7 +226,12 @@ export function RequestBuilder({
         <Button
           size="sm"
           variant="primary"
-          disabled={!device || (protocol === 'netconf' ? !xml : selections.length === 0)}
+          disabled={
+            !device ||
+            (protocol === 'netconf'
+              ? !xml && needsSelection(operation)
+              : selections.length === 0)
+          }
           loading={run.isPending || runRest.isPending}
           onClick={() => (protocol === 'netconf' ? run.mutate() : runRest.mutate(undefined))}
         >
@@ -211,6 +242,38 @@ export function RequestBuilder({
           <Trash2 className="size-3" />
         </Button>
       </div>
+
+      {staged ? (
+        <div className="flex flex-wrap items-center gap-2 border-b border-line-soft bg-warn/10 px-2 py-1.5">
+          <AlertTriangle className="size-3.5 shrink-0 text-warn" />
+          <span className="text-[11.5px] text-ink">
+            Staged in <span className="font-mono">candidate</span> — not applied yet.
+          </span>
+          <span className="flex-1" />
+          <Button
+            size="sm"
+            variant="primary"
+            loading={run.isPending && operation === 'commit'}
+            onClick={() => {
+              setOperation('commit')
+              setStaged(false)
+              runCommit.mutate()
+            }}
+          >
+            Commit
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setStaged(false)
+              runDiscard.mutate()
+            }}
+          >
+            Discard
+          </Button>
+        </div>
+      ) : null}
 
       {/* Selected nodes */}
       <div className="max-h-56 overflow-y-auto border-b border-line-soft">

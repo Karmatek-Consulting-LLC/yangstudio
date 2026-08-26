@@ -24,6 +24,21 @@ EDIT_OPERATIONS = {
 }
 READ_OPERATIONS = {"get", "get-config"}
 
+# Datastore operations. These act on the session or a whole datastore, so they
+# take no node selection — which is why they need their own branch below.
+#
+# Many devices refuse a direct write to running (IOS-XR and Junos always;
+# IOS-XE once candidate-datastore is enabled). There the flow is edit-config
+# into candidate, then commit. Without commit the edit is simply discarded when
+# the session ends, silently.
+DATASTORE_OPERATIONS = {
+    "commit": "Apply the candidate datastore to running",
+    "discard-changes": "Throw away uncommitted candidate changes",
+    "validate": "Check the candidate parses and is internally consistent",
+    "lock": "Take a lock on the datastore",
+    "unlock": "Release the lock",
+}
+
 
 class RpcError(Exception):
     """Raised when a selection cannot be turned into a valid RPC."""
@@ -51,6 +66,8 @@ class RpcRequest:
     namespaces: dict[str, str] = field(default_factory=dict)   # prefix -> uri
     message_id: str = "101"
     with_defaults: str = ""                 # report-all | trim | explicit | ...
+    # commit only: roll back automatically unless confirmed within N seconds.
+    confirmed_timeout: int = 0
 
 
 def _split_step(step: str) -> tuple[str, str]:
@@ -108,14 +125,20 @@ class _TreeAssembler:
 
 def build_rpc(request: RpcRequest) -> str:
     """Render ``request`` as a pretty-printed NETCONF RPC document."""
-    if not request.selections and request.operation != "get":
+    if (
+        not request.selections
+        and request.operation != "get"
+        and request.operation not in DATASTORE_OPERATIONS
+    ):
         raise RpcError("no nodes selected")
 
     nsmap = {"nc": NETCONF_NS}
     rpc = etree.Element(f"{{{NETCONF_NS}}}rpc", nsmap=nsmap)
     rpc.set("message-id", request.message_id)
 
-    if request.operation in READ_OPERATIONS:
+    if request.operation in DATASTORE_OPERATIONS:
+        _build_datastore_op(rpc, request)
+    elif request.operation in READ_OPERATIONS:
         _build_read(rpc, request)
     elif request.operation == "edit-config":
         _build_edit(rpc, request)
@@ -125,6 +148,39 @@ def build_rpc(request: RpcRequest) -> str:
         raise RpcError(f"unsupported operation: {request.operation!r}")
 
     return etree.tostring(rpc, pretty_print=True, encoding="unicode")
+
+
+def _build_datastore_op(rpc: etree._Element, request: RpcRequest) -> None:
+    """Build commit, discard-changes, validate, lock and unlock."""
+    op = request.operation
+
+    if op == "commit":
+        commit = etree.SubElement(rpc, f"{{{NETCONF_NS}}}commit")
+        if request.confirmed_timeout > 0:
+            # The device rolls back unless a second commit confirms in time —
+            # the safety net for changes that could cut off your own access.
+            etree.SubElement(commit, f"{{{NETCONF_NS}}}confirmed")
+            timeout = etree.SubElement(commit, f"{{{NETCONF_NS}}}confirm-timeout")
+            timeout.text = str(request.confirmed_timeout)
+        return
+
+    if op == "discard-changes":
+        etree.SubElement(rpc, f"{{{NETCONF_NS}}}discard-changes")
+        return
+
+    if op == "validate":
+        validate = etree.SubElement(rpc, f"{{{NETCONF_NS}}}validate")
+        source = etree.SubElement(validate, f"{{{NETCONF_NS}}}source")
+        etree.SubElement(source, f"{{{NETCONF_NS}}}{request.datastore}")
+        return
+
+    if op in ("lock", "unlock"):
+        element = etree.SubElement(rpc, f"{{{NETCONF_NS}}}{op}")
+        target = etree.SubElement(element, f"{{{NETCONF_NS}}}target")
+        etree.SubElement(target, f"{{{NETCONF_NS}}}{request.datastore}")
+        return
+
+    raise RpcError(f"unsupported datastore operation: {op!r}")
 
 
 def _filter_subtree(parent: etree._Element, request: RpcRequest) -> None:
