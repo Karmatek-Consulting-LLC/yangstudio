@@ -105,22 +105,102 @@ def build(fig, IMAGE, REPO):
         "your device.", f"""
     <div class="prose">
       <h1>Getting started</h1>
-      <p class="lede">There are five steps to get from a fresh install to a
-      request running against one of your devices: add the device, download the
-      schemas it publishes, group them into a set, explore that set, and send a
-      request.</p>
+      <p class="lede">Once the device is running NETCONF or RESTCONF, there
+      are five steps to get from a fresh install to a request running against
+      it: add the device, download the schemas it publishes, group them into a
+      set, explore that set, and send a request.</p>
+
+      <h2 id="prepare">Preparing the device</h2>
+      <p>Before YANG Studio can talk to anything, the device has to be running
+      the services and willing to authorise them. On IOS-XE that is three
+      pieces: AAA, the NETCONF service, and the RESTCONF service. The whole
+      thing is ten lines, and this is a working configuration taken from a live
+      router:</p>
+
+      <pre>conf t
+
+ <span class="c">! Both protocols authenticate through AAA. Without exec</span>
+ <span class="c">! authorisation, NETCONF sessions open and are then dropped.</span>
+ aaa new-model
+ aaa authentication login default local
+ aaa authorization exec default local
+
+ <span class="c">! NETCONF — listens on port 830 over SSH.</span>
+ netconf-yang
+
+ <span class="c">! Optional, and worth having: adds a candidate datastore, so</span>
+ <span class="c">! changes can be staged and committed as one transaction.</span>
+ netconf-yang feature candidate-datastore
+
+ <span class="c">! RESTCONF — needs the HTTPS server; it will not run over HTTP.</span>
+ ip http secure-server
+ ip http authentication local
+ no ip http server
+ restconf
+
+end
+write memory</pre>
 
       <div class="warn-box">
-        <p><b>NETCONF needs AAA configured on IOS-XE.</b> If it is missing,
-        the SSH login succeeds and the NETCONF subsystem starts, and then the
-        device closes the connection without explaining why. It looks like a
-        password problem, but it is not one.</p>
-        <pre>aaa new-model
-aaa authentication login default local
-aaa authorization exec default local</pre>
-        <p>The account also needs privilege 15. When YANG Studio sees this
-        particular failure it tells you what is wrong and which commands to
-        run, rather than reporting a generic connection error.</p>
+        <p><b>Apply the three AAA lines together.</b> <code>aaa new-model</code>
+        on its own changes how every login is authenticated, and without the
+        <code>aaa authentication login default local</code> line alongside it
+        you can lock yourself out of SSH. All three together preserve the
+        behaviour of a device using local accounts.</p>
+        <p>If you are working on something you cannot easily get back to,
+        <code>reload in 5</code> before you start is cheap insurance — the
+        device reboots into its saved configuration if you lose access.</p>
+      </div>
+
+      <h3>What each part is for</h3>
+      <div class="scroll"><table>
+        <thead><tr><th>Line</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td><code>aaa new-model</code><br><code>aaa authentication login default local</code><br><code>aaa authorization exec default local</code></td>
+              <td>Both protocols authorise through AAA. Exec authorisation is the part people miss: without it the SSH login succeeds, the NETCONF subsystem starts, and the device then closes the session without a hello. It looks like a password problem and is not one.</td></tr>
+          <tr><td><code>netconf-yang</code></td>
+              <td>Starts NETCONF on port 830. This is the only line strictly required for it.</td></tr>
+          <tr><td><code>netconf-yang feature candidate-datastore</code></td>
+              <td>Adds the candidate datastore. Worth enabling — it is what lets a change be staged, validated and committed as one transaction. Note that it also stops the device accepting writes directly to <code>running</code>.</td></tr>
+          <tr><td><code>ip http secure-server</code></td>
+              <td>RESTCONF runs over HTTPS on port 443 and will not start without it.</td></tr>
+          <tr><td><code>ip http authentication local</code></td>
+              <td>Authenticate HTTPS against the local user database.</td></tr>
+          <tr><td><code>no ip http server</code></td>
+              <td>Turns plain HTTP off, so credentials are never sent unencrypted. Not required, but there is no reason to leave it on.</td></tr>
+          <tr><td><code>restconf</code></td>
+              <td>Starts RESTCONF itself.</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>Checking it worked</h3>
+      <p>Two commands tell you whether the device is ready, before you go
+      anywhere near the app:</p>
+      <pre>show netconf-yang status</pre>
+      <pre>netconf-yang: <span class="ok">enabled</span>
+netconf-yang ssh port: <span class="ok">830</span>
+netconf-yang candidate-datastore: <span class="ok">enabled</span></pre>
+
+      <pre>show platform software yang-management process</pre>
+      <pre>confd            : <span class="ok">Running</span>
+nesd             : <span class="ok">Running</span>
+syncfd           : <span class="ok">Running</span>
+ncsshd           : <span class="ok">Running</span>     <span class="c">&lt;- NETCONF over SSH</span>
+<span class="hl">dmiauthd</span>         : <span class="ok">Running</span>     <span class="c">&lt;- authorises sessions; needs AAA</span>
+nginx            : <span class="ok">Running</span>     <span class="c">&lt;- serves RESTCONF</span>
+ndbmand          : <span class="ok">Running</span>
+pubd             : <span class="ok">Running</span></pre>
+      <p>If <code>dmiauthd</code> is not running, AAA is the thing to look at.
+      If <code>nginx</code> is not running, RESTCONF has no web server. The
+      account you connect with also needs privilege 15.</p>
+
+      <div class="note">
+        <p>These commands are IOS-XE, and were taken from a working router
+        rather than from documentation. Other platforms enable the same two
+        protocols with their own syntax — check your vendor's guide for those.
+        Everything else in this documentation applies either way, since the
+        models and the protocols are the same; only the lines that turn them on
+        differ.</p>
       </div>
 
       <div class="steps">
@@ -438,6 +518,12 @@ aaa authorization exec default local</pre>
       unrelated parts of the tree at once, which is the main thing that sets it
       apart from RESTCONF.</p>
 
+      <div class="note">
+        <p>The device needs <code>netconf-yang</code> configured, and AAA set
+        up so it will authorise the session. See
+        <a href="/getting-started#prepare">preparing the device</a>.</p>
+      </div>
+
       <h2 id="reading">Reading</h2>
       <p>If you select three leaves that live under the same list, you get a
       single <code>get-config</code> whose filter names all three. Selections
@@ -570,6 +656,12 @@ aaa authorization exec default local</pre>
       HTTP, using the encoding defined in RFC 8040. Switch the protocol toggle
       in the request panel and the selection you have already built is
       re-rendered as an HTTP method, a URL, and a JSON body.</p>
+
+      <div class="note">
+        <p>The device needs <code>restconf</code> configured and the HTTPS
+        server running — RESTCONF will not start over plain HTTP. See
+        <a href="/getting-started#prepare">preparing the device</a>.</p>
+      </div>
 
       <h2 id="paths">How a path becomes a URL</h2>
       <p>Three rules account for almost all of it.</p>
