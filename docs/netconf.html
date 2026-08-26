@@ -10,6 +10,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="/assets/site.css">
+<script src="/assets/copy.js" defer></script>
 </head>
 <body>
 
@@ -40,14 +41,16 @@
 
     <div class="prose">
       <h1>NETCONF</h1>
-      <p class="lede">Tick nodes, and the XML is written as you select. One
-      filter can carry several branches at once, which is the main thing that
-      distinguishes it from RESTCONF.</p>
+      <p class="lede">As you tick nodes in the tree, YANG Studio writes the
+      NETCONF XML for you. A single NETCONF filter can ask for several
+      unrelated parts of the tree at once, which is the main thing that sets it
+      apart from RESTCONF.</p>
 
       <h2 id="reading">Reading</h2>
-      <p>Selecting three leaves under one list produces a single
-      <code>get-config</code> whose subtree filter names all three. Sibling
-      selections merge under a shared parent rather than repeating it:</p>
+      <p>If you select three leaves that live under the same list, you get a
+      single <code>get-config</code> whose filter names all three. Selections
+      that share a parent are merged underneath it rather than each repeating
+      the whole path:</p>
       <pre>&lt;<b>get-config</b>&gt;
   &lt;source&gt;&lt;running/&gt;&lt;/source&gt;
   &lt;filter type="subtree"&gt;
@@ -60,27 +63,29 @@
     &lt;/interfaces&gt;
   &lt;/filter&gt;
 &lt;/<b>get-config</b>&gt;</pre>
-      <p>Give a key leaf a value and it becomes a filter match, narrowing the
-      reply to that entry.</p>
+      <p>If you type a value into a key leaf, that value becomes part of the
+      filter, and the device narrows its reply to the matching entry rather
+      than returning every one.</p>
     </div>
 
     <figure class="wide"><img src="/img/request-netconf.png" alt="Three selected leaves, and the XML written from them." loading="lazy" width="3200" height="1826"><figcaption>Three selected leaves, and the XML written from them.</figcaption></figure>
 
     <div class="prose">
 
-      <h2 id="reply">The reply</h2>
-      <p>Devices send a reply as one long line, which is correct on the wire
-      and unreadable on screen. It is re-indented and highlighted before you
-      see it.</p>
+      <h2 id="reply">Reading the reply</h2>
+      <p>Devices send their replies as a single unbroken line. That is perfectly
+      correct on the wire and completely unreadable on screen, so YANG Studio
+      re-indents and highlights the XML before showing it to you.</p>
     </div>
 
     <figure class="wide"><img src="/img/response-netconf.png" alt="The same request run, and its reply." loading="lazy" width="3200" height="1826"><figcaption>The same request run, and its reply.</figcaption></figure>
 
     <div class="prose">
       <h2 id="datastores">Datastores</h2>
-      <p>NETCONF separates the configuration that is running from the one you
-      are editing. Which datastores exist depends on the device, and YANG
-      Studio reads that from its capabilities.</p>
+      <p>NETCONF keeps the configuration that is currently running separate
+      from the one you are editing. Which datastores a device offers varies,
+      and YANG Studio works that out from the capabilities it advertised when
+      you connected.</p>
       <div class="scroll"><table>
         <thead><tr><th>Datastore</th><th>Is</th></tr></thead>
         <tbody>
@@ -96,9 +101,11 @@
         Junos always; IOS-XE once <code>candidate-datastore</code> is enabled.
         There, an edit-config against <code>running</code> comes back:</p>
         <pre>Unsupported capability :writable-running</pre>
-        <p>The flow is edit into <code>candidate</code>, then commit. Without
-        that second step the edit is discarded when the session ends — and a
-        successful-looking reply would imply a change that never happened.</p>
+        <p>On those devices the sequence is to edit into
+        <code>candidate</code> and then commit. If you skip the commit, the
+        edit is thrown away when the session closes, and the successful-looking
+        reply from the first step would have implied a change that never
+        actually happened.</p>
       </div>
 
       <p>YANG Studio marks a staged edit rather than letting it look applied:</p>
@@ -131,9 +138,10 @@
 &lt;/<b>commit</b>&gt;</pre>
 
       <h2 id="operations">Per-node operations</h2>
-      <p>In an <code>edit-config</code>, each selected node can carry its own
-      operation, so one request can merge one leaf and delete another
-      atomically.</p>
+      <p>Within a single <code>edit-config</code>, every node you selected can
+      carry its own operation. That means one request can merge a value into
+      one leaf and delete another leaf entirely, and the device applies both as
+      one change.</p>
       <div class="scroll"><table>
         <thead><tr><th>Operation</th><th>Does</th></tr></thead>
         <tbody>
@@ -146,11 +154,12 @@
       </table></div>
 
       <h2 id="sessions">Sessions</h2>
-      <p>Connections are reused rather than reopened per request. If an RPC
-      times out the session is dropped rather than reused — a late reply
-      arriving against a message-id already moved past desynchronises the
-      channel, and every later request would time out too. Retrying
-      reconnects.</p>
+      <p>YANG Studio keeps a NETCONF session open and reuses it, rather than
+      reconnecting for every request. If a request does time out, the session
+      is closed rather than reused: a reply that arrives late, against a
+      message the client has already given up on, leaves the channel out of
+      step, and every request after it would time out as well. Simply trying
+      again reconnects and works.</p>
     </div>
 
     <footer class="site">

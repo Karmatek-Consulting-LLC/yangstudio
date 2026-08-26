@@ -10,6 +10,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="/assets/site.css">
+<script src="/assets/copy.js" defer></script>
 </head>
 <body>
 
@@ -40,28 +41,35 @@
 
     <div class="prose">
       <h1>Getting started</h1>
-      <p class="lede">Five steps: add a device, download its schemas, make a
-      set, explore it, run a request.</p>
+      <p class="lede">There are five steps to get from a fresh install to a
+      request running against one of your devices: add the device, download the
+      schemas it publishes, group them into a set, explore that set, and send a
+      request.</p>
 
       <div class="warn-box">
-        <p><b>NETCONF needs AAA on IOS-XE.</b> Without it the session opens,
-        the subsystem starts, and the device hangs up without saying anything —
-        which looks like a credential problem but is not.</p>
+        <p><b>NETCONF needs AAA configured on IOS-XE.</b> If it is missing,
+        the SSH login succeeds and the NETCONF subsystem starts, and then the
+        device closes the connection without explaining why. It looks like a
+        password problem, but it is not one.</p>
         <pre>aaa new-model
 aaa authentication login default local
 aaa authorization exec default local</pre>
-        <p>The account also needs privilege 15. If this is missing, YANG Studio
-        says so explicitly rather than reporting a generic failure.</p>
+        <p>The account also needs privilege 15. When YANG Studio sees this
+        particular failure it tells you what is wrong and which commands to
+        run, rather than reporting a generic connection error.</p>
       </div>
 
       <div class="steps">
         <div class="step"><div>
           <h3>Add the device and connect</h3>
-          <p>On <b>Devices</b>, add a profile with an address, username and
-          password, then press <b>Connect</b>. The session lists every module
-          the device advertises — 507 on the box below.</p>
-          <p>The family filters matter: roughly a third of that list is legacy
-          SNMP MIBs translated to YANG, which are rarely what you want.</p>
+          <p>Go to <b>Devices</b> and create a profile with the address,
+          username and password for your device, then press <b>Connect</b>.
+          YANG Studio opens a NETCONF session and lists every module the device
+          says it implements. The router in the screenshot below advertises
+          507 of them.</p>
+          <p>That list is long, so it is grouped by family. Around a third of
+          it is usually legacy SNMP MIBs that have been translated into YANG,
+          and those are rarely what you are looking for.</p>
         </div></div>
       </div>
     </div>
@@ -72,32 +80,39 @@ aaa authorization exec default local</pre>
       <div class="steps">
         <div class="step"><div>
           <h3>Download the schemas you want</h3>
-          <p>Advertising a module is a promise, not the schema — the device has
-          not sent you anything yet. Tick what you need, choose a repository (or
-          create one right there), and press <b>Download</b>.</p>
-          <p>Each module is a separate request, around a second each, so this
-          runs as a background job. You can leave the page; it survives a
-          reload, and the task bar at the bottom tracks it.</p>
+          <p>When a device advertises a module it is telling you that it
+          implements it, but it has not sent you anything yet. To get the model
+          itself you have to ask for it. Tick the modules you want, choose the
+          repository to save them into (you can create one without leaving the
+          page), and press <b>Download</b>.</p>
+          <p>Each module is a separate request to the device and takes roughly
+          a second, so the download runs as a background job. You are free to
+          navigate away or reload the page while it works — the task bar along
+          the bottom keeps track of it.</p>
         </div></div>
 
         <div class="step"><div>
-          <h3>Make a set</h3>
-          <p>A repository is the files you have. A <b>set</b> is a group of
-          modules that resolve together into one tree — which is what you
-          actually explore. When a download finishes, the task bar offers to
-          make one from exactly what it fetched.</p>
-          <p>Imports are pulled in automatically. If something is still
-          missing, the app names it and offers to fetch it, because the device
-          advertises those too.</p>
+          <h3>Group the modules into a set</h3>
+          <p>A repository is simply the collection of files you have downloaded.
+          A <b>set</b> is a named group of modules that can be parsed together
+          into a single tree, and the set is what you actually explore. When a
+          download finishes, the task bar offers to build one from exactly the
+          modules it just fetched.</p>
+          <p>Modules depend on each other, so any imports that are already in
+          your repository get added for you. If something is still missing,
+          YANG Studio tells you which module it needs and offers to download
+          it, since the device publishes those as well.</p>
           <p><a href="/concepts#repo-vs-set">Why these are two different
           things →</a></p>
         </div></div>
 
         <div class="step"><div>
-          <h3>Explore it</h3>
-          <p>Pick the set on <b>Explore</b>. Click any node to see everything
-          known about it. Filter by name, path, type or description — matches
-          keep their ancestors so you can see the context.</p>
+          <h3>Explore the set</h3>
+          <p>Choose your set on the <b>Explore</b> page and the tree appears.
+          Click on any node to see everything the model says about it. The
+          filter box searches names, paths, types and descriptions at once, and
+          anything that matches keeps its parent nodes visible so you can tell
+          where in the model it lives.</p>
         </div></div>
       </div>
     </div>
@@ -107,10 +122,11 @@ aaa authorization exec default local</pre>
     <div class="prose">
       <div class="steps">
         <div class="step"><div>
-          <h3>Build a request and run it</h3>
-          <p>Tick nodes in the tree, or highlight one and press
-          <kbd>Space</kbd>. The request is written as you select. Choose
-          NETCONF or RESTCONF, pick the device, and <b>Run</b>.</p>
+          <h3>Build a request and send it</h3>
+          <p>Tick the nodes you are interested in, or highlight one and press
+          <kbd>Space</kbd>. The request is written for you as you go. Choose
+          whether to send it over NETCONF or RESTCONF, pick the device, and
+          press <b>Run</b>.</p>
         </div></div>
       </div>
 
@@ -126,8 +142,9 @@ aaa authorization exec default local</pre>
           <tr><td><code>Space</code></td><td>Add or remove it from the request</td></tr>
         </tbody>
       </table></div>
-      <p class="lede" style="font-size:.9rem">Tree keys work while the tree has
-      focus — click it once and the legend under it lights up.</p>
+      <p>The tree shortcuts only work while the tree itself has keyboard
+      focus. Click anywhere in it once and the legend along the bottom lights
+      up to show that the keys are live.</p>
     </div>
 
     <figure class="wide"><img src="/img/command-palette.png" alt="The command palette searches actions and every node in the loaded set." loading="lazy" width="3200" height="1826"><figcaption>The command palette searches actions and every node in the loaded set.</figcaption></figure>

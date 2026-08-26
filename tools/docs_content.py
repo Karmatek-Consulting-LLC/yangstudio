@@ -15,10 +15,12 @@ def build(fig, IMAGE, REPO):
         "Browse the YANG models a device implements, then build and run NETCONF "
         "or RESTCONF requests against it from the same tree.", f"""
     <div class="prose">
-      <h1>Browse a device's YANG models, then drive it</h1>
-      <p class="lede">Connect over NETCONF, download the schemas the device
-      advertises, explore them as a tree, and build requests from that tree —
-      as NETCONF XML or RESTCONF URLs, run against the live device.</p>
+      <h1>Explore your device's YANG models</h1>
+      <p class="lede">YANG Studio connects to your network devices, downloads
+      the YANG models they publish, and lets you browse those models as a tree.
+      When you find the data you are after, you can build a NETCONF or RESTCONF
+      request from the tree and send it to the device without leaving the
+      page.</p>
 
       <pre><b>docker run</b> -p 8420:8420 -v yangstudio-data:/data \\
   {IMAGE}:latest</pre>
@@ -30,31 +32,36 @@ def build(fig, IMAGE, REPO):
     <div class="prose">
       <h2 id="what">What it does</h2>
 
-      <h3>Reads schemas off the device</h3>
-      <p>A NETCONF session tells you every module the device implements, with
-      the revision, the optional features it turned on, and the vendor
-      deviations it applies. Download the ones you want — in the background,
-      with progress you can walk away from.</p>
+      <h3>Schema discovery</h3>
+      <p>When you connect over NETCONF, the device lists every YANG module it
+      implements, along with the revision it uses, the optional features it has
+      turned on, and any vendor deviations it applies. You choose which of
+      those modules to download. The download runs in the background, so you
+      can carry on working or close the page while it finishes.</p>
 
-      <h3>Parses them into something you can navigate</h3>
-      <p>The tree is virtualised, so a set with a hundred thousand nodes scrolls
-      at full speed. Filtering is live, and matches keep their ancestors so you
-      can see where a result sits rather than getting a flat list of names.</p>
+      <h3>A tree you can actually navigate</h3>
+      <p>The models are parsed into a browsable tree. Only the rows on screen
+      are rendered, so even a set with a hundred thousand nodes scrolls
+      smoothly. The filter box works as you type, and when a node matches, its
+      parents stay visible around it — you see where the result sits in the
+      model rather than a flat list of names with no context.</p>
 
-      <h3>Tells you what a node actually is</h3>
-      <p>Type and the typedef chain beneath it, range and pattern constraints,
-      allowed values, both paths, and whether it is
-      <span class="tag tag-config">config</span> you can write or
-      <span class="tag tag-state">state</span> the device reports.</p>
+      <h3>Full detail on every node</h3>
+      <p>Selecting a node shows you its type and the chain of typedefs beneath
+      it, any range or pattern constraints, the values it will accept, and both
+      of the paths that address it. It also tells you whether the node is
+      <span class="tag tag-config">config</span> that you can write to, or
+      <span class="tag tag-state">state</span> that the device only reports.</p>
 
-      <h3>Builds requests from the tree</h3>
-      <p>Tick nodes and the request is written as you go — NETCONF XML, or the
-      RESTCONF method, URL and JSON body. Run either against a device and read
-      the reply formatted and highlighted.</p>
+      <h3>Requests built from the model</h3>
+      <p>As you tick nodes in the tree, the request is written for you: either
+      the NETCONF XML, or the RESTCONF method, URL and JSON body. You can send
+      it to the device from the same panel, and the reply comes back formatted
+      and syntax-highlighted rather than as one long line.</p>
 
       <h2 id="themes">Light and dark</h2>
-      <p>The interface follows your system theme, and can be switched from the
-      top bar.</p>
+      <p>The interface follows whichever theme your system is set to, and you
+      can override it from the button in the top bar.</p>
     </div>
 
     {fig("explore-light", "The same view in the light theme.", wide=True)}
@@ -64,20 +71,24 @@ def build(fig, IMAGE, REPO):
       <div class="cards">
         <a class="card" href="/getting-started">
           <h3>Getting started →</h3>
-          <p>From an empty install to a request running against your device.</p>
+          <p>Walk through the whole flow, from an empty install to a request
+          running against one of your devices.</p>
         </a>
         <a class="card" href="/concepts">
           <h3>YANG concepts →</h3>
-          <p>What a capability string is, what you download, and why a
-          repository and a set are different things.</p>
+          <p>If the terminology is new to you, start here. It covers what a
+          capability string is, what you are downloading, and why a repository
+          and a set are two different things.</p>
         </a>
         <a class="card" href="/netconf">
           <h3>NETCONF →</h3>
-          <p>Filters, datastores, and why a write may need a commit.</p>
+          <p>How filters are built, what the datastores are for, and why a
+          write to some devices needs a commit afterwards.</p>
         </a>
         <a class="card" href="/restconf">
           <h3>RESTCONF →</h3>
-          <p>The same tree over HTTP, and where the two protocols differ.</p>
+          <p>The same models over HTTP, how a YANG path becomes a URL, and
+          where the two protocols part company.</p>
         </a>
       </div>
     </div>
@@ -89,28 +100,35 @@ def build(fig, IMAGE, REPO):
         "your device.", f"""
     <div class="prose">
       <h1>Getting started</h1>
-      <p class="lede">Five steps: add a device, download its schemas, make a
-      set, explore it, run a request.</p>
+      <p class="lede">There are five steps to get from a fresh install to a
+      request running against one of your devices: add the device, download the
+      schemas it publishes, group them into a set, explore that set, and send a
+      request.</p>
 
       <div class="warn-box">
-        <p><b>NETCONF needs AAA on IOS-XE.</b> Without it the session opens,
-        the subsystem starts, and the device hangs up without saying anything —
-        which looks like a credential problem but is not.</p>
+        <p><b>NETCONF needs AAA configured on IOS-XE.</b> If it is missing,
+        the SSH login succeeds and the NETCONF subsystem starts, and then the
+        device closes the connection without explaining why. It looks like a
+        password problem, but it is not one.</p>
         <pre>aaa new-model
 aaa authentication login default local
 aaa authorization exec default local</pre>
-        <p>The account also needs privilege 15. If this is missing, YANG Studio
-        says so explicitly rather than reporting a generic failure.</p>
+        <p>The account also needs privilege 15. When YANG Studio sees this
+        particular failure it tells you what is wrong and which commands to
+        run, rather than reporting a generic connection error.</p>
       </div>
 
       <div class="steps">
         <div class="step"><div>
           <h3>Add the device and connect</h3>
-          <p>On <b>Devices</b>, add a profile with an address, username and
-          password, then press <b>Connect</b>. The session lists every module
-          the device advertises — 507 on the box below.</p>
-          <p>The family filters matter: roughly a third of that list is legacy
-          SNMP MIBs translated to YANG, which are rarely what you want.</p>
+          <p>Go to <b>Devices</b> and create a profile with the address,
+          username and password for your device, then press <b>Connect</b>.
+          YANG Studio opens a NETCONF session and lists every module the device
+          says it implements. The router in the screenshot below advertises
+          507 of them.</p>
+          <p>That list is long, so it is grouped by family. Around a third of
+          it is usually legacy SNMP MIBs that have been translated into YANG,
+          and those are rarely what you are looking for.</p>
         </div></div>
       </div>
     </div>
@@ -121,32 +139,39 @@ aaa authorization exec default local</pre>
       <div class="steps">
         <div class="step"><div>
           <h3>Download the schemas you want</h3>
-          <p>Advertising a module is a promise, not the schema — the device has
-          not sent you anything yet. Tick what you need, choose a repository (or
-          create one right there), and press <b>Download</b>.</p>
-          <p>Each module is a separate request, around a second each, so this
-          runs as a background job. You can leave the page; it survives a
-          reload, and the task bar at the bottom tracks it.</p>
+          <p>When a device advertises a module it is telling you that it
+          implements it, but it has not sent you anything yet. To get the model
+          itself you have to ask for it. Tick the modules you want, choose the
+          repository to save them into (you can create one without leaving the
+          page), and press <b>Download</b>.</p>
+          <p>Each module is a separate request to the device and takes roughly
+          a second, so the download runs as a background job. You are free to
+          navigate away or reload the page while it works — the task bar along
+          the bottom keeps track of it.</p>
         </div></div>
 
         <div class="step"><div>
-          <h3>Make a set</h3>
-          <p>A repository is the files you have. A <b>set</b> is a group of
-          modules that resolve together into one tree — which is what you
-          actually explore. When a download finishes, the task bar offers to
-          make one from exactly what it fetched.</p>
-          <p>Imports are pulled in automatically. If something is still
-          missing, the app names it and offers to fetch it, because the device
-          advertises those too.</p>
+          <h3>Group the modules into a set</h3>
+          <p>A repository is simply the collection of files you have downloaded.
+          A <b>set</b> is a named group of modules that can be parsed together
+          into a single tree, and the set is what you actually explore. When a
+          download finishes, the task bar offers to build one from exactly the
+          modules it just fetched.</p>
+          <p>Modules depend on each other, so any imports that are already in
+          your repository get added for you. If something is still missing,
+          YANG Studio tells you which module it needs and offers to download
+          it, since the device publishes those as well.</p>
           <p><a href="/concepts#repo-vs-set">Why these are two different
           things →</a></p>
         </div></div>
 
         <div class="step"><div>
-          <h3>Explore it</h3>
-          <p>Pick the set on <b>Explore</b>. Click any node to see everything
-          known about it. Filter by name, path, type or description — matches
-          keep their ancestors so you can see the context.</p>
+          <h3>Explore the set</h3>
+          <p>Choose your set on the <b>Explore</b> page and the tree appears.
+          Click on any node to see everything the model says about it. The
+          filter box searches names, paths, types and descriptions at once, and
+          anything that matches keeps its parent nodes visible so you can tell
+          where in the model it lives.</p>
         </div></div>
       </div>
     </div>
@@ -156,10 +181,11 @@ aaa authorization exec default local</pre>
     <div class="prose">
       <div class="steps">
         <div class="step"><div>
-          <h3>Build a request and run it</h3>
-          <p>Tick nodes in the tree, or highlight one and press
-          <kbd>Space</kbd>. The request is written as you select. Choose
-          NETCONF or RESTCONF, pick the device, and <b>Run</b>.</p>
+          <h3>Build a request and send it</h3>
+          <p>Tick the nodes you are interested in, or highlight one and press
+          <kbd>Space</kbd>. The request is written for you as you go. Choose
+          whether to send it over NETCONF or RESTCONF, pick the device, and
+          press <b>Run</b>.</p>
         </div></div>
       </div>
 
@@ -175,8 +201,9 @@ aaa authorization exec default local</pre>
           <tr><td><code>Space</code></td><td>Add or remove it from the request</td></tr>
         </tbody>
       </table></div>
-      <p class="lede" style="font-size:.9rem">Tree keys work while the tree has
-      focus — click it once and the legend under it lights up.</p>
+      <p>The tree shortcuts only work while the tree itself has keyboard
+      focus. Click anywhere in it once and the legend along the bottom lights
+      up to show that the keys are live.</p>
     </div>
 
     {fig("command-palette", "The command palette searches actions and every node in the loaded set.", wide=True)}
@@ -188,24 +215,29 @@ aaa authorization exec default local</pre>
         "What a capability string is, what you are downloading, why imports are "
         "not optional, and why a repository and a set are different things.", f"""
     <div class="prose">
-      <h1>YANG, from inside the app</h1>
-      <p class="lede">Every example here is real output from a Cisco IOS-XE
-      device. Nothing is invented.</p>
+      <h1>YANG concepts</h1>
+      <p class="lede">If the vocabulary around YANG is new to you, this page
+      explains it through the things YANG Studio actually shows you. Every
+      example below is real output from a Cisco IOS-XE device rather than an
+      invented sample.</p>
 
       <div class="note">
-        <p><b>The one idea: YANG is a schema language, not a protocol.</b></p>
-        <p>A <code>.yang</code> file describes what data a device holds — the
-        shape of the tree, the type of every leaf, which parts are
-        configurable. It says nothing about how you read or write that data.
-        NETCONF, RESTCONF and gNMI are three transports carrying
-        <em>the same tree</em>.</p>
+        <p><b>The one idea worth starting with: YANG is a schema language,
+        not a protocol.</b></p>
+        <p>A <code>.yang</code> file describes the data a device holds. It
+        defines the shape of the tree, the type of every leaf, and which parts
+        of it you are allowed to change. What it does not describe is how you
+        read or write any of that. NETCONF, RESTCONF and gNMI are three
+        different ways of moving <em>the same tree</em> across the network, and
+        learning the model is what carries across all three.</p>
       </div>
 
       <h2 id="connect">What comes back when you connect</h2>
-      <p>A NETCONF session opens with both sides announcing what they support.
-      This device sends back <b>522 capability strings</b>: 15 describing the
-      protocol, 507 describing YANG modules. Here is one of the 507, exactly as
-      it arrived:</p>
+      <p>When a NETCONF session opens, the client and the device each announce
+      what they support. The device in this example sends back <b>522
+      capability strings</b>: 15 that describe the protocol itself, and 507
+      that describe the YANG modules it implements. Here is one of those 507,
+      exactly as it arrived:</p>
 
       <pre>urn:ietf:params:xml:ns:yang:ietf-interfaces?module=<b>ietf-interfaces</b>&amp;revision=<span class="warn">2014-05-08</span>
   &amp;features=<span class="ok">pre-provisioning,if-mib,arbitrary-names</span>
@@ -223,15 +255,19 @@ aaa authorization exec default local</pre>
       </table></div>
 
       <div class="warn-box">
-        <p><b>This is a promise, not the schema.</b> The device is saying "I
-        implement ietf-interfaces at this revision". It has not sent you the
-        model, and you still do not know what is in it.</p>
+        <p><b>A capability is a promise, not the schema itself.</b> The device
+        is telling you that it implements <code>ietf-interfaces</code> at that
+        revision. It has not sent you the model, so at this point you still do
+        not know what is inside it. Downloading is a separate step.</p>
       </div>
 
       <h2 id="download">What you are downloading</h2>
-      <p>Pressing Download issues one <code>&lt;get-schema&gt;</code> request
-      per module, and the device returns the module's source. That text
-      <em>is</em> the schema, and reading it is the fastest way into YANG:</p>
+      <p>When you press Download, YANG Studio sends one
+      <code>&lt;get-schema&gt;</code> request for each module you picked, and
+      the device replies with the module's source text. That text <em>is</em>
+      the schema. It is meant to be read by people as well as parsers, and
+      reading a little of it is the quickest way to get comfortable with
+      YANG:</p>
 
       <pre><b>container</b> interfaces {{          <span class="c">// a fixed node — exists once</span>
   <b>list</b> interface {{             <span class="c">// repeats; one entry per interface</span>
@@ -246,44 +282,58 @@ aaa authorization exec default local</pre>
     }}
   }}
 }}</pre>
-      <p>Four keywords carry most of YANG. <b>container</b> groups.
-      <b>list</b> repeats and needs a <b>key</b>. <b>leaf</b> holds one typed
-      value. Everything else refines those.</p>
+      <p>Four keywords do most of the work in YANG. A <b>container</b> groups
+      related nodes together and appears once. A <b>list</b> repeats, with one
+      entry per interface or neighbour or route, and it needs a <b>key</b> to
+      tell those entries apart. A <b>leaf</b> holds a single typed value, and
+      that is where the actual data lives. Almost everything else in the
+      language is a refinement of those four.</p>
 
       <h2 id="imports">Why it asks for other modules too</h2>
-      <p>Modules borrow types from each other, and say so at the top:</p>
+      <p>Modules are not self-contained. They borrow type definitions from one
+      another, and they declare that at the top of the file:</p>
       <pre><span class="c">// in ietf-ip.yang</span>
 <b>import</b> ietf-inet-types {{ <b>prefix</b> inet; }}
 
 <span class="c">// and later</span>
 <b>leaf</b> address {{ <b>type</b> <span class="hl">inet:ipv4-address-no-zone</span>; }}</pre>
-      <p>What is an <code>ipv4-address-no-zone</code>? Nothing in
-      <code>ietf-ip</code> answers that — the definition lives in the other
-      file, as a string with a validation pattern. Without it the parser
-      genuinely cannot tell you what that leaf accepts.</p>
-      <p>That is what <em>"will not parse yet — 4 imports missing"</em> means.
-      It is not fussiness; the tree cannot be built.</p>
+      <p>So what is an <code>ipv4-address-no-zone</code>? Nothing in
+      <code>ietf-ip</code> answers that question. The definition lives in the
+      other file, where it turns out to be a string with a validation pattern
+      attached. Without that second file, the parser genuinely cannot tell you
+      what the leaf will accept, what to validate against, or what to suggest
+      while you type.</p>
+      <p>That is what the message <em>"will not parse yet — 4 imports
+      missing"</em> is telling you. It is not the app being fussy. The tree
+      cannot be built at all until those files are present.</p>
 
       <h2 id="repo-vs-set">Why a repository <em>and</em> a set</h2>
-      <p>They answer different questions, and this is the distinction that
-      trips people up.</p>
+      <p>This is the distinction that catches most people out, and it is worth
+      being precise about, because the two answer genuinely different
+      questions.</p>
       <div class="cards">
         <div class="card">
           <h3>Repository</h3>
-          <p><b>"What files do I have?"</b> A directory of <code>.yang</code>
-          files. An inventory. It may hold the same module at several
-          revisions, and modules that contradict each other. A filing cabinet
-          is not required to be consistent.</p>
+          <p><b>"What files do I have?"</b></p>
+          <p>A repository is a directory of <code>.yang</code> files — an
+          inventory of everything you have collected. It is allowed to hold the
+          same module at several different revisions, and to hold modules that
+          contradict one another. A filing cabinet does not have to be
+          internally consistent.</p>
         </div>
         <div class="card">
           <h3>Set</h3>
-          <p><b>"Which modules resolve into one valid tree?"</b> Specific
-          modules at specific revisions that parse together. This is the unit
-          you explore and query, and it must be internally consistent.</p>
+          <p><b>"Which modules resolve into one valid tree?"</b></p>
+          <p>A set names specific modules, at specific revisions, that can be
+          parsed together successfully. This is the unit you explore and build
+          requests against, and unlike a repository it does have to be
+          consistent.</p>
         </div>
       </div>
 
-      <p>Why a repository cannot simply be parsed whole — two measurements:</p>
+      <p>You might reasonably ask why the app cannot just parse the whole
+      repository and skip the extra step. These two measurements are the
+      answer:</p>
       <div class="scroll"><table>
         <thead><tr><th>Parsed</th><th>Modules</th><th>Result</th></tr></thead>
         <tbody>
@@ -291,10 +341,12 @@ aaa authorization exec default local</pre>
           <tr><td>One BFD module</td><td>9</td><td><b>0 errors</b>, 250 nodes</td></tr>
         </tbody>
       </table></div>
-      <p>On top of that, 23 module names in the IETF collection exist at two
-      different revisions, and a tree can only use one. So there is no such
-      thing as "the tree for this repository" — a set is what makes a tree
-      possible at all.</p>
+      <p>Those BFD modules all add nodes to the same place in the routing
+      tree, so loading them together produces a genuine conflict. On top of
+      that, 23 of the module names in the IETF collection exist at two
+      different revisions, and a single tree can only use one of them. Between
+      the two problems, there is no such thing as "the tree for this
+      repository". Choosing a set is what makes a tree possible at all.</p>
 
     </div>
 
@@ -302,11 +354,13 @@ aaa authorization exec default local</pre>
 
     <div class="prose">
       <h2 id="using-a-set">What a set gets you</h2>
-      <p>Every node carries two things that matter for doing work. First, a
-      path that addresses it:</p>
+      <p>Once a set is parsed, every node in it carries two pieces of
+      information that you will use constantly. The first is a path that
+      addresses it:</p>
       <pre>/if:interfaces/if:interface/if:description</pre>
-      <p>Second, whether you can write to it. YANG marks operational data
-      <code>config false</code>, and the app shows that as a badge:</p>
+      <p>The second is whether you are allowed to write to it. YANG marks
+      operational data with <code>config false</code>, and YANG Studio turns
+      that into a badge on every node:</p>
       <div class="scroll"><table>
         <thead><tr><th>Badge</th><th>Means</th><th>Example</th></tr></thead>
         <tbody>
@@ -314,25 +368,30 @@ aaa authorization exec default local</pre>
           <tr><td><span class="tag tag-state">state</span></td><td>Read-only — the device reports it</td><td><code>interface/oper-status</code></td></tr>
         </tbody>
       </table></div>
-      <p>Trying to write a state node is one of the commonest early mistakes.
-      The tree tells you before you try.</p>
+      <p>Attempting to write to a state node is one of the most common
+      mistakes when you are starting out. The badge tells you before you
+      try, rather than the device rejecting the request afterwards.</p>
 
       <h3>Features narrow the tree</h3>
-      <p>Because the device declared it implements
-      <code>pre-provisioning, if-mib, arbitrary-names</code> and nothing else,
-      a set built from its capabilities prunes what is not there — on this
-      device that removed <code>if-index</code> and
-      <code>link-up-down-trap-enable</code>. Small here; on a full vendor
-      model it is the difference between a schema and a schema that matches the
-      box in front of you.</p>
+      <p>Parts of a YANG module can be marked optional, and a device declares
+      which of those it has turned on. The device in these examples implements
+      <code>pre-provisioning</code>, <code>if-mib</code> and
+      <code>arbitrary-names</code>, and nothing else. Because YANG Studio knows
+      that, a set built from the device's own capabilities leaves out the nodes
+      it does not support — here that removed <code>if-index</code> and
+      <code>link-up-down-trap-enable</code>.</p>
+      <p>The difference is small in this example, but on a full vendor model it
+      is the difference between a schema for the product family and a schema
+      for the box actually in front of you.</p>
     </div>
 
     {fig("identityref-values", "An identityref resolves through the whole identity hierarchy, not one level.", wide=True)}
 
     <div class="prose">
       <h2 id="vocabulary">The vocabulary</h2>
-      <p>Everything you will meet in the tree. The first four are ninety
-      percent of it.</p>
+      <p>These are the terms you will run into while browsing a tree. As
+      above, the first four account for the large majority of what you will
+      see.</p>
       <div class="scroll"><table>
         <tbody>
           <tr><td><code>container</code></td><td>Groups other nodes. Exists once.</td></tr>
@@ -361,14 +420,16 @@ aaa authorization exec default local</pre>
         "Subtree filters, datastores, and why a write may need a commit.", f"""
     <div class="prose">
       <h1>NETCONF</h1>
-      <p class="lede">Tick nodes, and the XML is written as you select. One
-      filter can carry several branches at once, which is the main thing that
-      distinguishes it from RESTCONF.</p>
+      <p class="lede">As you tick nodes in the tree, YANG Studio writes the
+      NETCONF XML for you. A single NETCONF filter can ask for several
+      unrelated parts of the tree at once, which is the main thing that sets it
+      apart from RESTCONF.</p>
 
       <h2 id="reading">Reading</h2>
-      <p>Selecting three leaves under one list produces a single
-      <code>get-config</code> whose subtree filter names all three. Sibling
-      selections merge under a shared parent rather than repeating it:</p>
+      <p>If you select three leaves that live under the same list, you get a
+      single <code>get-config</code> whose filter names all three. Selections
+      that share a parent are merged underneath it rather than each repeating
+      the whole path:</p>
       <pre>&lt;<b>get-config</b>&gt;
   &lt;source&gt;&lt;running/&gt;&lt;/source&gt;
   &lt;filter type="subtree"&gt;
@@ -381,27 +442,29 @@ aaa authorization exec default local</pre>
     &lt;/interfaces&gt;
   &lt;/filter&gt;
 &lt;/<b>get-config</b>&gt;</pre>
-      <p>Give a key leaf a value and it becomes a filter match, narrowing the
-      reply to that entry.</p>
+      <p>If you type a value into a key leaf, that value becomes part of the
+      filter, and the device narrows its reply to the matching entry rather
+      than returning every one.</p>
     </div>
 
     {fig("request-netconf", "Three selected leaves, and the XML written from them.", wide=True)}
 
     <div class="prose">
 
-      <h2 id="reply">The reply</h2>
-      <p>Devices send a reply as one long line, which is correct on the wire
-      and unreadable on screen. It is re-indented and highlighted before you
-      see it.</p>
+      <h2 id="reply">Reading the reply</h2>
+      <p>Devices send their replies as a single unbroken line. That is perfectly
+      correct on the wire and completely unreadable on screen, so YANG Studio
+      re-indents and highlights the XML before showing it to you.</p>
     </div>
 
     {fig("response-netconf", "The same request run, and its reply.", wide=True)}
 
     <div class="prose">
       <h2 id="datastores">Datastores</h2>
-      <p>NETCONF separates the configuration that is running from the one you
-      are editing. Which datastores exist depends on the device, and YANG
-      Studio reads that from its capabilities.</p>
+      <p>NETCONF keeps the configuration that is currently running separate
+      from the one you are editing. Which datastores a device offers varies,
+      and YANG Studio works that out from the capabilities it advertised when
+      you connected.</p>
       <div class="scroll"><table>
         <thead><tr><th>Datastore</th><th>Is</th></tr></thead>
         <tbody>
@@ -417,9 +480,11 @@ aaa authorization exec default local</pre>
         Junos always; IOS-XE once <code>candidate-datastore</code> is enabled.
         There, an edit-config against <code>running</code> comes back:</p>
         <pre>Unsupported capability :writable-running</pre>
-        <p>The flow is edit into <code>candidate</code>, then commit. Without
-        that second step the edit is discarded when the session ends — and a
-        successful-looking reply would imply a change that never happened.</p>
+        <p>On those devices the sequence is to edit into
+        <code>candidate</code> and then commit. If you skip the commit, the
+        edit is thrown away when the session closes, and the successful-looking
+        reply from the first step would have implied a change that never
+        actually happened.</p>
       </div>
 
       <p>YANG Studio marks a staged edit rather than letting it look applied:</p>
@@ -452,9 +517,10 @@ aaa authorization exec default local</pre>
 &lt;/<b>commit</b>&gt;</pre>
 
       <h2 id="operations">Per-node operations</h2>
-      <p>In an <code>edit-config</code>, each selected node can carry its own
-      operation, so one request can merge one leaf and delete another
-      atomically.</p>
+      <p>Within a single <code>edit-config</code>, every node you selected can
+      carry its own operation. That means one request can merge a value into
+      one leaf and delete another leaf entirely, and the device applies both as
+      one change.</p>
       <div class="scroll"><table>
         <thead><tr><th>Operation</th><th>Does</th></tr></thead>
         <tbody>
@@ -467,11 +533,12 @@ aaa authorization exec default local</pre>
       </table></div>
 
       <h2 id="sessions">Sessions</h2>
-      <p>Connections are reused rather than reopened per request. If an RPC
-      times out the session is dropped rather than reused — a late reply
-      arriving against a message-id already moved past desynchronises the
-      channel, and every later request would time out too. Retrying
-      reconnects.</p>
+      <p>YANG Studio keeps a NETCONF session open and reuses it, rather than
+      reconnecting for every request. If a request does time out, the session
+      is closed rather than reused: a reply that arrives late, against a
+      message the client has already given up on, leaves the channel out of
+      step, and every request after it would time out as well. Simply trying
+      again reconnects and works.</p>
     </div>
 """))
 
@@ -481,12 +548,13 @@ aaa authorization exec default local</pre>
         "differs from NETCONF.", f"""
     <div class="prose">
       <h1>RESTCONF</h1>
-      <p class="lede">The same tree, encoded per RFC 8040. Switch protocol in
-      the request panel and the selection you already built renders as a
-      method, a URL and a JSON body.</p>
+      <p class="lede">RESTCONF carries the same YANG models over ordinary
+      HTTP, using the encoding defined in RFC 8040. Switch the protocol toggle
+      in the request panel and the selection you have already built is
+      re-rendered as an HTTP method, a URL, and a JSON body.</p>
 
       <h2 id="paths">How a path becomes a URL</h2>
-      <p>Three rules do most of the work.</p>
+      <p>Three rules account for almost all of it.</p>
       <ul>
         <li>The first node is qualified by its module — <code>ietf-interfaces:interfaces</code></li>
         <li>Later nodes are bare, unless an augment changes module, which re-qualifies them</li>
@@ -505,22 +573,25 @@ GET /restconf/data/<b>ietf-interfaces:interfaces</b>/interface=<span class="hl">
       </div>
 
       <h2 id="one-resource">One resource per request</h2>
-      <p>This is the real difference. A NETCONF filter carries several branches
-      at once; RESTCONF addresses one resource per call. Several leaves under
-      one parent fold into a single request using a <code>fields</code>
-      query:</p>
+      <p>This is the substantive difference between the two protocols. A
+      NETCONF filter can ask for several unrelated branches in one message,
+      whereas a RESTCONF call addresses exactly one resource. Where several of
+      your selected leaves share a parent, they are folded into a single
+      request using a <code>fields</code> query:</p>
       <pre>GET /restconf/data/ietf-interfaces:interfaces/interface<span class="hl">?fields=name;description;type</span></pre>
-      <p>Anything that cannot fold becomes its own request, and the panel says
-      so rather than hiding it. Each request lists which tree paths it
-      covers.</p>
+      <p>Anything that cannot be folded in becomes a request of its own, and
+      the panel tells you when that happens rather than quietly issuing extra
+      calls. Each planned request lists the tree paths it covers, so you can
+      see exactly which of your selections it accounts for.</p>
     </div>
 
     {fig("response-restconf", "Three leaves folded into one fields query, and the JSON reply.", wide=True)}
 
     <div class="prose">
       <h2 id="writing">Writing</h2>
-      <p>NETCONF's edit operations map onto HTTP methods. The body names its
-      member with the module that defines it:</p>
+      <p>The NETCONF edit operations have direct HTTP equivalents, so the same
+      selection can be written either way. In the request body, the member is
+      named with the module that defines it:</p>
       <div class="scroll"><table>
         <thead><tr><th>NETCONF</th><th>RESTCONF</th><th>Means</th></tr></thead>
         <tbody>
@@ -545,10 +616,12 @@ Content-Type: application/yang-data+json
       </div>
 
       <h2 id="checking">Checking a device supports it</h2>
-      <p>RESTCONF has no handshake, so without asking you only find out when a
-      request fails. <b>Check RESTCONF</b> on the Devices page reports the root
-      and the optional capabilities that decide what a request can express —
-      <code>fields</code> is the one that makes the folding above legal.</p>
+      <p>Unlike NETCONF, RESTCONF has no handshake that announces itself, so
+      if you do not ask, the first sign that it is unavailable is a request
+      failing. The <b>Check RESTCONF</b> button on the Devices page asks the
+      device directly and reports its root path along with the optional
+      capabilities it supports. The one to look for is <code>fields</code>,
+      since that is what makes the request folding described above legal.</p>
 
       <h2 id="differences">Where the two differ</h2>
       <div class="scroll"><table>
@@ -571,58 +644,86 @@ Content-Type: application/yang-data+json
         "variable.", f"""
     <div class="prose">
       <h1>Deploying</h1>
-      <p class="lede">One container, one volume. The image serves the API and
-      the UI from a single process and runs as a non-root user.</p>
+      <p class="lede">YANG Studio ships as a single container that serves both
+      the API and the web interface from one process, and it runs as a
+      non-root user. All it needs from you is a volume to keep your models
+      and device profiles in.</p>
 
-      <h2 id="docker">Docker</h2>
-      <pre><b>docker run</b> -d --name yangstudio \
-  -p 8420:8420 \
-  -v yangstudio-data:/data \
-  {IMAGE}:latest</pre>
-      <p>Built for <code>linux/amd64</code> and <code>linux/arm64</code>, with
-      an SBOM and build provenance attached.</p>
-
-      <h2 id="compose">Docker Compose</h2>
-      <pre>services:
+      <h2 id="compose-file">The Compose file</h2>
+      <p>If you deploy things locally with Compose, this is the whole file.
+      Save it as <code>compose.yaml</code> and run
+      <code>docker compose up -d</code>.</p>
+      <pre><span class="c"># compose.yaml</span>
+services:
   yangstudio:
     image: {IMAGE}:latest
+    container_name: yangstudio
     ports:
+      <span class="c"># host:container — change the left side if 8420 is taken</span>
       - "8420:8420"
     volumes:
-      - yangstudio-data:<b>/data</b>
+      <span class="c"># Your repositories, sets and device profiles live here.</span>
+      <span class="c"># Without this, everything is lost when the container is replaced.</span>
+      - yangstudio-data:/data
+    environment:
+      <span class="c"># Raise this if commits on your devices run long.</span>
+      YANGSTUDIO_RPC_TIMEOUT: "120"
     restart: unless-stopped
 
 volumes:
   yangstudio-data:</pre>
-      <pre>docker compose up -d</pre>
+      <p>Then open <a href="http://localhost:8420">localhost:8420</a>. There is
+      nothing else to configure — no database, no separate web server, and no
+      init step.</p>
 
-      <h2 id="volume">The volume</h2>
-      <div class="warn-box">
-        <p><b>Mount <code>/data</code> or you will lose everything you
-        download.</b> It holds your repositories, sets and device profiles, and
-        a container without it starts empty every time it is replaced.</p>
+      <div class="note">
+        <p>If you would rather keep the data somewhere you can browse, swap the
+        named volume for a directory on the host. The path is relative to the
+        Compose file:</p>
+        <pre>    volumes:
+      - <b>./yangstudio-data</b>:/data</pre>
+        <p>This exact file is in the repository as
+        <a href="{REPO}/blob/main/compose.yaml">compose.yaml</a>, so you can
+        also just clone and run it.</p>
       </div>
-      <p>Its layout is deliberately plain, so it is readable and diffable
-      without the app:</p>
+
+      <h2 id="docker">Plain Docker</h2>
+      <p>If you are not using Compose, the equivalent single command is:</p>
+      <pre><b>docker run</b> -d --name yangstudio \
+  -p 8420:8420 \
+  -v yangstudio-data:/data \
+  {IMAGE}:latest</pre>
+      <p>The image is built for both <code>linux/amd64</code> and
+      <code>linux/arm64</code>, so it runs natively on Apple Silicon as well as
+      on ordinary servers. Each build publishes an SBOM and a signed provenance
+      attestation alongside it.</p>
+
+      <h2 id="volume">What the volume holds</h2>
+      <div class="warn-box">
+        <p><b>Make sure <code>/data</code> is mounted somewhere persistent.</b>
+        It holds your repositories, your sets and your device profiles. A
+        container started without it will work perfectly well, and then lose
+        everything the moment it is replaced or upgraded.</p>
+      </div>
+      <p>The layout inside it is deliberately plain, so you can read, diff and
+      version-control the contents without going through the app at all:</p>
       <pre>/data
 ├── repositories/&lt;name&gt;/*.yang   <span class="c"># plain YANG files</span>
 ├── yangsets/&lt;name&gt;.json         <span class="c"># which modules, at which revisions</span>
 ├── devices/&lt;name&gt;.json          <span class="c"># connection profiles</span>
 └── cache/                       <span class="c"># header index, safe to delete</span></pre>
 
-      <p>To keep it somewhere you can see, bind-mount a directory instead:</p>
-      <pre>    volumes:
-      - <b>./yangstudio-data</b>:/data</pre>
-
       <div class="warn-box">
         <p><b>Device passwords are stored in plain text</b> in
-        <code>/data/devices/*.json</code>, because the app must replay them to
-        authenticate. Treat that volume as a secret: keep it off shared
-        storage, and out of version control.</p>
+        <code>/data/devices/*.json</code>. They have to be recoverable, because
+        the app replays them to authenticate against your devices, so they
+        cannot be hashed the way a user password would be. Treat that volume as
+        a secret: keep it off shared storage and out of version control.</p>
       </div>
 
       <h2 id="config">Configuration</h2>
-      <p>All optional.</p>
+      <p>Every one of these is optional, and the defaults are sensible for a
+      local deployment.</p>
       <div class="scroll"><table>
         <thead><tr><th>Variable</th><th>Default</th><th>Means</th></tr></thead>
         <tbody>
@@ -635,9 +736,10 @@ volumes:
         </tbody>
       </table></div>
 
-      <h2 id="memory">Sizing</h2>
-      <p>Parsing is the expensive step and it is proportional to the set you
-      open, not to the repository. Measured on the IETF RFC collection:</p>
+      <h2 id="memory">How much machine it needs</h2>
+      <p>Parsing the models is the expensive part, and the cost scales with the
+      set you open rather than with the size of your repository. These
+      measurements come from the IETF RFC collection:</p>
       <div class="scroll"><table>
         <thead><tr><th>Operation</th><th>Cost</th></tr></thead>
         <tbody>
@@ -647,16 +749,18 @@ volumes:
           <tr><td>Search across 11,403 nodes</td><td>0.02 s</td></tr>
         </tbody>
       </table></div>
-      <p>Large vendor-native sets are memory-hungry; a few gigabytes is
-      reasonable for those. A handful of IETF modules needs very little.</p>
+      <p>Large vendor-native models are the memory-hungry case, and a few
+      gigabytes is a reasonable allowance if you plan to open those. A handful
+      of IETF modules needs very little.</p>
 
       <h2 id="source">From source</h2>
       <p>Needs <a href="https://docs.astral.sh/uv/">uv</a> and Node 22+.</p>
       <pre>git clone {REPO}
 cd yangstudio
 ./run.sh</pre>
-      <p>The script creates the virtualenv, installs dependencies, finds free
-      ports — 8420 and 5173 are commonly taken — and prints both URLs.</p>
+      <p>The script creates the virtual environment, installs the
+      dependencies, and finds free ports before starting — 8420 and 5173 are
+      both commonly in use — then prints the URLs it settled on.</p>
     </div>
 """))
 
