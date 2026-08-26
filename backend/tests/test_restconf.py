@@ -12,9 +12,9 @@ from yangstudio.core.resturl import (
 )
 from yangstudio.services import restconf
 
-IFACES = PathNode("interfaces", "ietf-interfaces", "container")
-IFACE = PathNode("interface", "ietf-interfaces", "list", ["name"])
-DESC = PathNode("description", "ietf-interfaces", "leaf")
+IFACES = PathNode("interfaces", "ietf-interfaces", "container", prefix="if")
+IFACE = PathNode("interface", "ietf-interfaces", "list", ["name"], prefix="if")
+DESC = PathNode("description", "ietf-interfaces", "leaf", prefix="if")
 
 
 def test_first_node_is_qualified_by_module():
@@ -30,23 +30,23 @@ def test_later_nodes_in_the_same_module_are_bare():
 def test_a_module_change_requalifies():
     """An augment from another module announces itself in the path."""
     path = build_path(
-        [IFACES, IFACE, PathNode("ipv4", "ietf-ip", "container"),
-         PathNode("mtu", "ietf-ip", "leaf")],
-        {"/interfaces/interface": {"name": "Gi2"}},
+        [IFACES, IFACE, PathNode("ipv4", "ietf-ip", "container", prefix="ip"),
+         PathNode("mtu", "ietf-ip", "leaf", prefix="ip")],
+        {"/if:interfaces/if:interface": {"name": "Gi2"}},
     )
     assert path == "/restconf/data/ietf-interfaces:interfaces/interface=Gi2/ietf-ip:ipv4/mtu"
 
 
 def test_list_key_goes_into_the_path():
-    path = build_path([IFACES, IFACE, DESC], {"/interfaces/interface": {"name": "Gi1"}})
+    path = build_path([IFACES, IFACE, DESC], {"/if:interfaces/if:interface": {"name": "Gi1"}})
     assert path.endswith("/interface=Gi1/description")
 
 
 def test_multiple_keys_are_comma_separated_in_order():
-    node = PathNode("entry", "m", "list", ["first", "second"])
+    node = PathNode("entry", "m", "list", ["first", "second"], prefix="m")
     path = build_path(
-        [PathNode("top", "m", "container"), node],
-        {"/top/entry": {"second": "b", "first": "a"}},
+        [PathNode("top", "m", "container", prefix="m"), node],
+        {"/m:top/m:entry": {"second": "b", "first": "a"}},
     )
     assert path.endswith("/entry=a,b")
 
@@ -152,3 +152,37 @@ def test_writing_only_keys_is_rejected(planned):
     """Keys identify the entry; they are not themselves an edit."""
     with pytest.raises(RestconfError, match="only nodes selected are list keys"):
         planned([_sel("/config/peer/id", "p1")], "merge")
+
+
+def test_two_modules_sharing_a_data_path_resolve_separately(repo_with_modules):
+    """ietf-interfaces and openconfig-interfaces both define /interfaces/interface.
+
+    Resolving by plain data path picks whichever was indexed last, so a request
+    built from one module's nodes can silently address the other's.
+    """
+    repo, yangset = repo_with_modules
+    (repo.path / "other-base@2024-01-01.yang").write_text(
+        """
+        module other-base {
+          namespace "urn:example:other-base"; prefix ob;
+          revision 2024-01-01;
+          container config {
+            leaf hostname { type string; }
+          }
+        }
+        """
+    )
+    repo.modules(refresh=True)
+    yangset.modules.append({"name": "other-base", "revision": "2024-01-01"})
+    yangset.save()
+    from yangstudio.services import explorer
+
+    explorer.invalidate(yangset.slug)
+
+    # Same unprefixed path in both modules; the prefix is what separates them.
+    ietf = restconf.plan(yangset, [_sel("/tb:config/tb:hostname")])[0]
+    other = restconf.plan(yangset, [_sel("/ob:config/ob:hostname")])[0]
+
+    assert ietf.path.startswith("/restconf/data/test-base:config")
+    assert other.path.startswith("/restconf/data/other-base:config")
+    assert ietf.path != other.path

@@ -42,13 +42,19 @@ def _index(flat: list[dict]) -> tuple[dict, dict]:
     return by_path, by_pfx
 
 
-def _chain(row: dict, by_path: dict) -> list[PathNode]:
-    """Every node from the module root down to ``row``."""
-    parts = [p for p in row.get("xpath", "").split("/") if p]
+def _chain(row: dict, by_pfx: dict) -> list[PathNode]:
+    """Every node from the module root down to ``row``.
+
+    Walks the *prefixed* path. Two modules can define the same data path —
+    ietf-interfaces and openconfig-interfaces both have /interfaces/interface —
+    so resolving by plain path silently picks whichever was indexed last, and
+    the request goes to the wrong model.
+    """
+    parts = [p for p in row.get("xpath_pfx", "").split("/") if p]
     nodes: list[PathNode] = []
     for depth in range(1, len(parts) + 1):
         path = "/" + "/".join(parts[:depth])
-        ancestor = by_path.get(path)
+        ancestor = by_pfx.get(path)
         if ancestor is None:
             raise RestconfError(f"no node at {path!r} in this set")
         nodes.append(
@@ -57,13 +63,17 @@ def _chain(row: dict, by_path: dict) -> list[PathNode]:
                 module=ancestor.get("module", ""),
                 nodetype=ancestor.get("nodetype", ""),
                 keys=list(ancestor.get("keys") or []),
+                prefix=ancestor.get("prefix", ""),
             )
         )
     return nodes
 
 
 def _collect_key_values(selections: list[dict], by_path: dict, by_pfx: dict) -> dict:
-    """Hoist values typed on key leaves up to the list entry they identify."""
+    """Hoist values typed on key leaves up to the list entry they identify.
+
+    Keyed by prefixed path, for the same reason as _chain.
+    """
     keys: dict[str, dict[str, str]] = {}
     for selection in selections:
         value = (selection.get("value") or "").strip()
@@ -72,9 +82,8 @@ def _collect_key_values(selections: list[dict], by_path: dict, by_pfx: dict) -> 
         row = by_pfx.get(selection.get("xpath", "")) or by_path.get(selection.get("xpath", ""))
         if row is None:
             continue
-        path = row.get("xpath", "")
-        parent_path = path.rsplit("/", 1)[0]
-        parent = by_path.get(parent_path)
+        parent_path = row.get("xpath_pfx", "").rsplit("/", 1)[0]
+        parent = by_pfx.get(parent_path)
         if parent is None or parent.get("nodetype") != "list":
             continue
         if row["name"] in (parent.get("keys") or []):
@@ -110,21 +119,21 @@ def plan(
         row = by_pfx.get(selection.get("xpath", "")) or by_path.get(selection.get("xpath", ""))
         if row is None:
             raise RestconfError(f"{selection.get('xpath')!r} is not in this set")
-        resolved.append((selection, row, _chain(row, by_path)))
+        resolved.append((selection, row, _chain(row, by_pfx)))
 
     if method == "GET":
-        return _plan_reads(resolved, by_path, key_values)
+        return _plan_reads(resolved, by_pfx, key_values)
     return _plan_writes(resolved, key_values, method)
 
 
-def _plan_reads(resolved, by_path: dict, key_values: dict) -> list[RestRequest]:
+def _plan_reads(resolved, by_pfx: dict, key_values: dict) -> list[RestRequest]:
     """Fold sibling leaves into one GET with ?fields=, keep the rest separate."""
     groups: dict[str, list] = {}
     standalone: list = []
 
     for _selection, row, chain in resolved:
-        parent_path = row.get("xpath", "").rsplit("/", 1)[0]
-        parent = by_path.get(parent_path)
+        parent_path = row.get("xpath_pfx", "").rsplit("/", 1)[0]
+        parent = by_pfx.get(parent_path)
         is_leaf = row.get("nodetype") in ("leaf", "leaf-list")
         is_key = parent is not None and row["name"] in (parent.get("keys") or [])
 
@@ -152,13 +161,13 @@ def _plan_reads(resolved, by_path: dict, key_values: dict) -> list[RestRequest]:
                 method="GET",
                 path=path,
                 query=f"fields={fields}",
-                covers=[row["xpath"] for row, _ in members],
+                covers=[row["xpath_pfx"] for row, _ in members],
             )
         )
 
     for row, chain in standalone:
         requests.append(
-            RestRequest(method="GET", path=build_path(chain, key_values), covers=[row["xpath"]])
+            RestRequest(method="GET", path=build_path(chain, key_values), covers=[row["xpath_pfx"]])
         )
     return requests
 
@@ -167,7 +176,7 @@ def _plan_writes(resolved, key_values: dict, method: str) -> list[RestRequest]:
     """One request per node — RESTCONF has no multi-branch edit."""
     requests: list[RestRequest] = []
     for selection, row, chain in resolved:
-        parent_keys = key_values.get(row.get("xpath", "").rsplit("/", 1)[0], {})
+        parent_keys = key_values.get(row.get("xpath_pfx", "").rsplit("/", 1)[0], {})
         # A key leaf identifies the entry; it is not itself edited.
         if row["name"] in parent_keys:
             continue
@@ -188,7 +197,7 @@ def _plan_writes(resolved, key_values: dict, method: str) -> list[RestRequest]:
                 path=build_path(chain, key_values),
                 body=body,
                 content_type=content_type,
-                covers=[row["xpath"]],
+                covers=[row["xpath_pfx"]],
             )
         )
     if not requests:
