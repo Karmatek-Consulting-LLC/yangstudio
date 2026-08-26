@@ -44,9 +44,19 @@ export function TreeView({
     overscan: 18,
   })
 
-  // Keep the keyboard cursor in view as it moves.
+  // Keep the keyboard cursor in view as it moves — and only then.
+  //
+  // Expanding a node changes the row count, which used to re-run this and
+  // scroll to wherever the cursor happened to be. Someone navigating by mouse
+  // has never moved it, so it sits at 0 and every expand jumped to the top of
+  // the tree.
+  const lastCursor = useRef(cursor)
   useEffect(() => {
-    if (cursor >= 0 && cursor < rows.length) virtualizer.scrollToIndex(cursor, { align: 'auto' })
+    if (lastCursor.current === cursor) return
+    lastCursor.current = cursor
+    if (cursor >= 0 && cursor < rows.length) {
+      virtualizer.scrollToIndex(cursor, { align: 'auto' })
+    }
   }, [cursor, rows.length, virtualizer])
 
   const handleKeyDown = useCallback(
