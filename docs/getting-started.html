@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Getting started · YANG Studio</title>
+<meta name="description" content="From an empty install to a NETCONF or RESTCONF request running against your device.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌲</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M13 15h4"/></svg> YANG Studio</a>
+  <nav>
+    <a href="/getting-started">Get started</a>
+    <a href="/concepts">Concepts</a>
+    <a href="/deploy">Deploy</a>
+    <a class="gh" href="https://github.com/Karmatek-Consulting-LLC/yangstudio"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.721.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> GitHub</a>
+  </nav>
+</header>
+
+<div class="shell">
+  <aside class="sidenav">
+      <h4>Start</h4>
+      <a href="/">Overview</a>
+      <a href="/getting-started" aria-current="page">Getting started</a>
+      <a href="/concepts">YANG concepts</a>
+      <h4>Protocols</h4>
+      <a href="/netconf">NETCONF</a>
+      <a href="/restconf">RESTCONF</a>
+      <h4>Operate</h4>
+      <a href="/deploy">Deploying</a>
+      <a href="/api">HTTP API</a>
+  </aside>
+  <main>
+
+    <div class="prose">
+      <h1>Getting started</h1>
+      <p class="lede">Five steps: add a device, download its schemas, make a
+      set, explore it, run a request.</p>
+
+      <div class="warn-box">
+        <p><b>NETCONF needs AAA on IOS-XE.</b> Without it the session opens,
+        the subsystem starts, and the device hangs up without saying anything —
+        which looks like a credential problem but is not.</p>
+        <pre>aaa new-model
+aaa authentication login default local
+aaa authorization exec default local</pre>
+        <p>The account also needs privilege 15. If this is missing, YANG Studio
+        says so explicitly rather than reporting a generic failure.</p>
+      </div>
+
+      <div class="steps">
+        <div class="step"><div>
+          <h3>Add the device and connect</h3>
+          <p>On <b>Devices</b>, add a profile with an address, username and
+          password, then press <b>Connect</b>. The session lists every module
+          the device advertises — 507 on the box below.</p>
+          <p>The family filters matter: roughly a third of that list is legacy
+          SNMP MIBs translated to YANG, which are rarely what you want.</p>
+        </div></div>
+      </div>
+    </div>
+
+    <figure class="wide"><img src="/img/devices-capabilities.png" alt="A connected device. 507 advertised modules, grouped by family — 174 of them SNMP MIBs." loading="lazy" width="3200" height="1826"><figcaption>A connected device. 507 advertised modules, grouped by family — 174 of them SNMP MIBs.</figcaption></figure>
+
+    <div class="prose">
+      <div class="steps">
+        <div class="step"><div>
+          <h3>Download the schemas you want</h3>
+          <p>Advertising a module is a promise, not the schema — the device has
+          not sent you anything yet. Tick what you need, choose a repository (or
+          create one right there), and press <b>Download</b>.</p>
+          <p>Each module is a separate request, around a second each, so this
+          runs as a background job. You can leave the page; it survives a
+          reload, and the task bar at the bottom tracks it.</p>
+        </div></div>
+
+        <div class="step"><div>
+          <h3>Make a set</h3>
+          <p>A repository is the files you have. A <b>set</b> is a group of
+          modules that resolve together into one tree — which is what you
+          actually explore. When a download finishes, the task bar offers to
+          make one from exactly what it fetched.</p>
+          <p>Imports are pulled in automatically. If something is still
+          missing, the app names it and offers to fetch it, because the device
+          advertises those too.</p>
+          <p><a href="/concepts#repo-vs-set">Why these are two different
+          things →</a></p>
+        </div></div>
+
+        <div class="step"><div>
+          <h3>Explore it</h3>
+          <p>Pick the set on <b>Explore</b>. Click any node to see everything
+          known about it. Filter by name, path, type or description — matches
+          keep their ancestors so you can see the context.</p>
+        </div></div>
+      </div>
+    </div>
+
+    <figure class="wide"><img src="/img/node-detail.png" alt="A leaf, with its type, description, constraints and both paths." loading="lazy" width="3200" height="1826"><figcaption>A leaf, with its type, description, constraints and both paths.</figcaption></figure>
+
+    <div class="prose">
+      <div class="steps">
+        <div class="step"><div>
+          <h3>Build a request and run it</h3>
+          <p>Tick nodes in the tree, or highlight one and press
+          <kbd>Space</kbd>. The request is written as you select. Choose
+          NETCONF or RESTCONF, pick the device, and <b>Run</b>.</p>
+        </div></div>
+      </div>
+
+      <h2 id="keyboard">Keyboard</h2>
+      <div class="scroll"><table>
+        <thead><tr><th>Key</th><th>Does</th></tr></thead>
+        <tbody>
+          <tr><td><code>⌘K</code> / <code>Ctrl-K</code></td><td>Command palette — actions and every loaded node</td></tr>
+          <tr><td><code>1</code> <code>2</code> <code>3</code></td><td>Switch page</td></tr>
+          <tr><td><code>↑</code> <code>↓</code></td><td>Move through the tree</td></tr>
+          <tr><td><code>→</code> <code>←</code></td><td>Expand, collapse, or jump to the parent</td></tr>
+          <tr><td><code>Enter</code></td><td>Inspect the highlighted node</td></tr>
+          <tr><td><code>Space</code></td><td>Add or remove it from the request</td></tr>
+        </tbody>
+      </table></div>
+      <p class="lede" style="font-size:.9rem">Tree keys work while the tree has
+      focus — click it once and the legend under it lights up.</p>
+    </div>
+
+    <figure class="wide"><img src="/img/command-palette.png" alt="The command palette searches actions and every node in the loaded set." loading="lazy" width="3200" height="1826"><figcaption>The command palette searches actions and every node in the loaded set.</figcaption></figure>
+
+    <footer class="site">
+      <span>Apache 2.0</span>
+      <a href="https://github.com/Karmatek-Consulting-LLC/yangstudio">Source</a>
+      <a href="https://github.com/Karmatek-Consulting-LLC/yangstudio/pkgs/container/yangstudio">Container image</a>
+      <span>Examples captured from a Cisco IOS-XE device.</span>
+    </footer>
+  </main>
+</div>
+
+</body>
+</html>

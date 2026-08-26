@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deploying · YANG Studio</title>
+<meta name="description" content="Docker, Compose, what the volume holds, and every configuration variable.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌲</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M13 15h4"/></svg> YANG Studio</a>
+  <nav>
+    <a href="/getting-started">Get started</a>
+    <a href="/concepts">Concepts</a>
+    <a href="/deploy">Deploy</a>
+    <a class="gh" href="https://github.com/Karmatek-Consulting-LLC/yangstudio"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.721.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> GitHub</a>
+  </nav>
+</header>
+
+<div class="shell">
+  <aside class="sidenav">
+      <h4>Start</h4>
+      <a href="/">Overview</a>
+      <a href="/getting-started">Getting started</a>
+      <a href="/concepts">YANG concepts</a>
+      <h4>Protocols</h4>
+      <a href="/netconf">NETCONF</a>
+      <a href="/restconf">RESTCONF</a>
+      <h4>Operate</h4>
+      <a href="/deploy" aria-current="page">Deploying</a>
+      <a href="/api">HTTP API</a>
+  </aside>
+  <main>
+
+    <div class="prose">
+      <h1>Deploying</h1>
+      <p class="lede">One container, one volume. The image serves the API and
+      the UI from a single process and runs as a non-root user.</p>
+
+      <h2 id="docker">Docker</h2>
+      <pre><b>docker run</b> -d --name yangstudio   -p 8420:8420   -v yangstudio-data:/data   ghcr.io/karmatek-consulting-llc/yangstudio:latest</pre>
+      <p>Built for <code>linux/amd64</code> and <code>linux/arm64</code>, with
+      an SBOM and build provenance attached.</p>
+
+      <h2 id="compose">Docker Compose</h2>
+      <pre>services:
+  yangstudio:
+    image: ghcr.io/karmatek-consulting-llc/yangstudio:latest
+    ports:
+      - "8420:8420"
+    volumes:
+      - yangstudio-data:<b>/data</b>
+    restart: unless-stopped
+
+volumes:
+  yangstudio-data:</pre>
+      <pre>docker compose up -d</pre>
+
+      <h2 id="volume">The volume</h2>
+      <div class="warn-box">
+        <p><b>Mount <code>/data</code> or you will lose everything you
+        download.</b> It holds your repositories, sets and device profiles, and
+        a container without it starts empty every time it is replaced.</p>
+      </div>
+      <p>Its layout is deliberately plain, so it is readable and diffable
+      without the app:</p>
+      <pre>/data
+├── repositories/&lt;name&gt;/*.yang   <span class="c"># plain YANG files</span>
+├── yangsets/&lt;name&gt;.json         <span class="c"># which modules, at which revisions</span>
+├── devices/&lt;name&gt;.json          <span class="c"># connection profiles</span>
+└── cache/                       <span class="c"># header index, safe to delete</span></pre>
+
+      <p>To keep it somewhere you can see, bind-mount a directory instead:</p>
+      <pre>    volumes:
+      - <b>./yangstudio-data</b>:/data</pre>
+
+      <div class="warn-box">
+        <p><b>Device passwords are stored in plain text</b> in
+        <code>/data/devices/*.json</code>, because the app must replay them to
+        authenticate. Treat that volume as a secret: keep it off shared
+        storage, and out of version control.</p>
+      </div>
+
+      <h2 id="config">Configuration</h2>
+      <p>All optional.</p>
+      <div class="scroll"><table>
+        <thead><tr><th>Variable</th><th>Default</th><th>Means</th></tr></thead>
+        <tbody>
+          <tr><td><code>YANGSTUDIO_DATA</code></td><td><code>~/.yangstudio</code></td><td>Where repositories, sets and profiles live. <code>/data</code> in the image.</td></tr>
+          <tr><td><code>YANGSTUDIO_HOST</code></td><td><code>127.0.0.1</code></td><td>Bind address. <code>0.0.0.0</code> in the image.</td></tr>
+          <tr><td><code>YANGSTUDIO_PORT</code></td><td><code>8420</code></td><td>Port for both API and UI.</td></tr>
+          <tr><td><code>YANGSTUDIO_RPC_TIMEOUT</code></td><td><code>60</code></td><td>Seconds to wait for a NETCONF reply. A commit on a busy device can use most of it.</td></tr>
+          <tr><td><code>YANGSTUDIO_CORS</code></td><td><code>localhost:5173</code></td><td>Allowed origins, comma-separated.</td></tr>
+          <tr><td><code>YANGSTUDIO_STATIC</code></td><td>auto</td><td>Path to the built frontend.</td></tr>
+        </tbody>
+      </table></div>
+
+      <h2 id="memory">Sizing</h2>
+      <p>Parsing is the expensive step and it is proportional to the set you
+      open, not to the repository. Measured on the IETF RFC collection:</p>
+      <div class="scroll"><table>
+        <thead><tr><th>Operation</th><th>Cost</th></tr></thead>
+        <tbody>
+          <tr><td>Index a 484-module repository</td><td>0.33 s — headers only</td></tr>
+          <tr><td>Parse a 144-module set (11,403 nodes)</td><td>10.9 s</td></tr>
+          <tr><td>Re-open the same set</td><td>0.08 s, from cache</td></tr>
+          <tr><td>Search across 11,403 nodes</td><td>0.02 s</td></tr>
+        </tbody>
+      </table></div>
+      <p>Large vendor-native sets are memory-hungry; a few gigabytes is
+      reasonable for those. A handful of IETF modules needs very little.</p>
+
+      <h2 id="source">From source</h2>
+      <p>Needs <a href="https://docs.astral.sh/uv/">uv</a> and Node 22+.</p>
+      <pre>git clone https://github.com/Karmatek-Consulting-LLC/yangstudio
+cd yangstudio
+./run.sh</pre>
+      <p>The script creates the virtualenv, installs dependencies, finds free
+      ports — 8420 and 5173 are commonly taken — and prints both URLs.</p>
+    </div>
+
+    <footer class="site">
+      <span>Apache 2.0</span>
+      <a href="https://github.com/Karmatek-Consulting-LLC/yangstudio">Source</a>
+      <a href="https://github.com/Karmatek-Consulting-LLC/yangstudio/pkgs/container/yangstudio">Container image</a>
+      <span>Examples captured from a Cisco IOS-XE device.</span>
+    </footer>
+  </main>
+</div>
+
+</body>
+</html>
