@@ -85,8 +85,33 @@ volumes:
       </div>
 
       <h2 id="docker">Plain Docker</h2>
-      <p>If you are not using Compose, the equivalent single command is:</p>
-      <pre><b>docker run</b> -d --name yangstudio   -p 8420:8420   -v yangstudio-data:/data   ghcr.io/karmatek-consulting-llc/yangstudio:latest</pre>
+      <p>If you are not using Compose, there are two commands worth knowing,
+      depending on what you are doing.</p>
+
+      <p>To try it out — it runs in the foreground, and <kbd>Ctrl-C</kbd> stops
+      it:</p>
+      <pre><b>docker run</b> --rm --name yangstudio \
+  -p 8420:8420 \
+  -v yangstudio-data:/data \
+  ghcr.io/karmatek-consulting-llc/yangstudio:latest</pre>
+      <p><code>--rm</code> removes the container when it stops, so you are not
+      left collecting dead containers each time you restart it. It does
+      <em>not</em> touch the named volume, so your repositories and device
+      profiles survive. <code>--name</code> gives it a predictable name for
+      <code>docker logs</code> and <code>docker exec</code>.</p>
+
+      <p>To leave it running — detached, and back after a reboot:</p>
+      <pre><b>docker run</b> -d --name yangstudio \
+  --restart unless-stopped \
+  -p 8420:8420 \
+  -v yangstudio-data:/data \
+  ghcr.io/karmatek-consulting-llc/yangstudio:latest</pre>
+      <div class="note">
+        <p>These two cannot be combined — Docker rejects
+        <code>--rm</code> alongside <code>--restart</code>, since one asks for
+        the container to be thrown away and the other asks for it to be brought
+        back. Pick whichever matches what you are doing.</p>
+      </div>
       <p>The image is built for both <code>linux/amd64</code> and
       <code>linux/arm64</code>, so it runs natively on Apple Silicon as well as
       on ordinary servers. Each build publishes an SBOM and a signed provenance
