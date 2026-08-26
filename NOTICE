@@ -1,0 +1,19 @@
+YANG Studio
+Copyright 2026 Karmatek
+
+This product includes software developed at Karmatek.
+
+---
+
+This product depends on software from third parties, each under its own
+license. Notable dependencies:
+
+  pyang           BSD              https://github.com/mbj4668/pyang
+  ncclient        Apache-2.0       https://github.com/ncclient/ncclient
+  FastAPI         MIT              https://github.com/fastapi/fastapi
+  lxml            BSD-3-Clause     https://lxml.de/
+  httpx           BSD-3-Clause     https://www.python-httpx.org/
+  React           MIT              https://react.dev/
+  TanStack Query  MIT              https://tanstack.com/query
+  Tailwind CSS    MIT              https://tailwindcss.com/
+  lucide-react    ISC              https://lucide.dev/
