@@ -267,7 +267,12 @@ function SetHandoff({
     mutationFn: () => {
       // "12 schemas from edge-router-1 → repo" reads better as just the device name.
       const source = label.split(' from ')[1]?.split(' →')[0] ?? 'download'
-      return api.createYangSetFromModules(source, repository, modules)
+      // Prefer the device-derived set: it records the features and deviations
+      // the device declared, which narrow the tree to what the box actually
+      // implements. Fall back only if the job did not record a device.
+      return deviceSlug
+        ? api.createYangSetFromDevice(source, repository, deviceSlug, modules)
+        : api.createYangSetFromModules(source, repository, modules)
     },
     onSuccess: (created) => {
       setResult(created)
@@ -311,7 +316,7 @@ function SetHandoff({
   return (
     <div className="mt-1.5 flex items-center gap-2">
       <Button size="sm" variant="outline" loading={create.isPending} onClick={() => create.mutate()}>
-        <Layers className="size-3" /> Create set from these {modules.length}
+        <Layers className="size-3" /> Create a set from these {modules.length}
       </Button>
       {error ? <span className="text-[10.5px] text-danger">{error}</span> : null}
     </div>

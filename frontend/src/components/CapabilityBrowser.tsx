@@ -287,13 +287,13 @@ export function CapabilityBrowser({
             loading={createSetFromDevice.isPending}
             title={
               selected.size
-                ? `Build a set from the ${selected.size} ticked modules already in this repository`
-                : 'Build a set from everything this device advertises that the repository holds'
+                ? `Build a set from the ${selected.size} ticked modules — only those already downloaded into this repository`
+                : 'Build a set from every advertised module this repository already holds'
             }
             onClick={() => createSetFromDevice.mutate()}
           >
             <Layers className="size-3" />
-            Make set
+            Make set{selected.size ? ` (${selected.size})` : ''}
           </Button>
           {selected.size ? (
             <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
@@ -344,6 +344,14 @@ export function CapabilityBrowser({
           <p className="mt-1.5 flex items-start gap-1 text-[11px] text-danger">
             <AlertTriangle className="mt-px size-3 shrink-0" />
             {repoError}
+          </p>
+        ) : null}
+
+        {selected.size > 0 && repository && !started && !madeSet ? (
+          <p className="mt-1.5 text-[11px] text-ink-faint">
+            <b>Download</b> fetches these into the repository and then offers to
+            make a set. <b>Make set</b> skips the download and uses only what is
+            already there — the same set either way.
           </p>
         ) : null}
 
