@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { EmptyTree } from '@/components/EmptyTree'
 import { NodeDetail } from '@/components/NodeDetail'
 import { Split } from '@/components/Split'
 import { RequestBuilder } from '@/components/RequestBuilder'
@@ -349,6 +350,9 @@ export function Explore({
               title="Could not parse this set"
               hint={String((tree.error as Error).message)}
             />
+          ) : rows.length === 0 && !hasActiveFilters(filters) ? (
+            /* Parsed fine, but the modules contribute no data nodes. */
+            <EmptyTree modules={modules} />
           ) : rows.length === 0 ? (
             <EmptyState
               title="Nothing matches those filters"

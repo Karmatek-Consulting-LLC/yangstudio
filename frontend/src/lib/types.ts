@@ -65,6 +65,8 @@ export interface ModuleTree {
   organization: string
   description: string
   yang_version: string
+  /** Counts of what the module defines besides data — groupings, typedefs… */
+  defines?: Record<string, number>
   children: YangNode[]
 }
 
