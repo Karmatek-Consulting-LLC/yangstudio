@@ -1,4 +1,5 @@
 """Tree building: the semantics the whole UI depends on."""
+from yangstudio.core.storage import YangSet
 from yangstudio.core.tree import flatten, parse_yangset
 from yangstudio.services import explorer
 
@@ -97,3 +98,42 @@ def test_explorer_cache_is_reused(repo_with_modules):
     first, _ = explorer.get_parsed(yangset)
     second, _ = explorer.get_parsed(yangset)
     assert first is second       # Same object: served from cache.
+
+
+def test_a_module_reports_what_it_defines(repo_with_modules):
+    """Needed to explain an empty tree rather than just showing a blank pane."""
+    _, yangset = repo_with_modules
+    parsed = parse_yangset(yangset)
+    module = parsed.modules[0]
+    assert module["defines"]["identity"] == 3      # protocol, tcp, secure-tcp
+    assert module["defines"]["typedef"] == 1       # percent
+
+
+def test_a_grouping_only_module_parses_to_an_empty_tree(repo_with_modules):
+    """Vendor -common and -types modules are libraries, not data trees.
+
+    This is a valid module, not a failure, and the app has to be able to tell
+    the difference to explain itself.
+    """
+    repo, _ = repo_with_modules
+    (repo.path / "only-groupings@2024-01-01.yang").write_text(
+        """
+        module only-groupings {
+          namespace "urn:example:only-groupings"; prefix og;
+          revision 2024-01-01;
+          typedef percent { type uint8 { range "0..100"; } }
+          grouping addressing { leaf host { type string; } }
+          grouping timing { leaf interval { type uint16; } }
+        }
+        """
+    )
+    repo.modules(refresh=True)
+    yangset = YangSet.create(
+        "library", repo.slug, [{"name": "only-groupings", "revision": "2024-01-01"}]
+    )
+    parsed = parse_yangset(yangset)
+    module = parsed.modules[0]
+
+    assert module["children"] == []                       # no data tree
+    assert [d for d in parsed.diagnostics if d.level == "error"] == []
+    assert module["defines"] == {"grouping": 2, "typedef": 1}

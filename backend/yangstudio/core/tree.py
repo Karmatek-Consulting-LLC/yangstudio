@@ -438,6 +438,15 @@ def parse_yangset(
         prefix = builder._arg(module, "prefix")
         namespace = builder._arg(module, "namespace")
         revs = sorted((r.arg for r in module.search("revision") if r.arg), reverse=True)
+        # A module can be perfectly valid and still contribute no data tree:
+        # plenty of vendor "-common" and "-types" modules are libraries of
+        # groupings and typedefs for other modules to use. Counting what they
+        # do define is the only way to explain an empty tree.
+        defines = {
+            keyword: len(module.search(keyword))
+            for keyword in ("grouping", "typedef", "identity", "feature", "extension")
+            if module.search(keyword)
+        }
         modules_out.append(
             {
                 "name": module.arg,
@@ -447,6 +456,7 @@ def parse_yangset(
                 "organization": builder._arg(module, "organization").strip(),
                 "description": builder._arg(module, "description").strip(),
                 "yang_version": builder._arg(module, "yang-version", "1.0"),
+                "defines": defines,
                 "children": children,
             }
         )
