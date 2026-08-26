@@ -16,7 +16,7 @@ const BLANK: Partial<Device> = {
   name: '', address: '', username: '', password: '', description: '', variant: 'generic',
 }
 
-export function Devices({ onOpenSet }: { onOpenSet?: (slug: string) => void }) {
+export function Devices() {
   const qc = useQueryClient()
   const [selected, setSelected] = useState<string>('')
   const [draft, setDraft] = useState<Partial<Device> | null>(null)
@@ -283,11 +283,9 @@ export function Devices({ onOpenSet }: { onOpenSet?: (slug: string) => void }) {
             <CapabilityBrowser
               capabilities={capabilities.data}
               deviceSlug={selected}
-              deviceName={device?.name ?? selected}
               onRepositoriesChanged={() =>
                 qc.invalidateQueries({ queryKey: ['repositories'] })
               }
-              onOpenSet={onOpenSet}
             />
           )}
           </Panel>

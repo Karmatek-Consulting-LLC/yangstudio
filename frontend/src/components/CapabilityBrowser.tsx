@@ -7,34 +7,30 @@
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { AlertTriangle, CheckCircle2, Download, Layers, Search } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Download, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import { SetCreated } from './SetCreated'
 import { RestconfProbe } from './RestconfProbe'
 import { Badge, Button, EmptyState, Input, Spinner } from './ui'
 import { api, ApiError } from '@/lib/api'
 import { FAMILY_LABELS, familyCounts, moduleFamily, type FamilyId } from '@/lib/moduleFamily'
-import type { Capabilities, SetCreated as SetCreatedResult } from '@/lib/types'
+import type { Capabilities } from '@/lib/types'
 
 /** Sentinel value for the picker's "create one" option. */
 const NEW_REPOSITORY = '__new__'
 
 export function CapabilityBrowser({
-  capabilities, deviceSlug, deviceName, onRepositoriesChanged, onOpenSet,
+  capabilities, deviceSlug, onRepositoriesChanged,
 }: {
   capabilities: Capabilities
   deviceSlug: string
-  deviceName: string
   onRepositoriesChanged: () => void
-  onOpenSet?: (slug: string) => void
 }) {
   const [filter, setFilter] = useState('')
   const [family, setFamily] = useState<FamilyId | 'all'>('all')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [repository, setRepository] = useState('')
   const [started, setStarted] = useState('')
-  const [madeSet, setMadeSet] = useState<SetCreatedResult | null>(null)
   const [error, setError] = useState('')
   const [creatingRepo, setCreatingRepo] = useState(false)
   const [newRepoName, setNewRepoName] = useState('')
@@ -91,25 +87,6 @@ export function CapabilityBrowser({
     const name = newRepoName.trim()
     if (name) createRepository.mutate(name)
   }
-
-  // Build a set straight from the device's own capability list. This is the
-  // better definition: it pins the revisions the device implements and carries
-  // the features it declares, which a repository cannot express.
-  const createSetFromDevice = useMutation({
-    mutationFn: () =>
-      api.createYangSetFromDevice(
-        `${deviceName} advertised`,
-        repository,
-        deviceSlug,
-        selected.size ? [...selected] : [],
-      ),
-    onSuccess: (created) => {
-      setMadeSet(created)
-      setError('')
-      qc.invalidateQueries({ queryKey: ['yangsets'] })
-    },
-    onError: (e: unknown) => setError(e instanceof ApiError ? e.message : String(e)),
-  })
 
   const download = useMutation({
     mutationFn: () => api.downloadSchemas(deviceSlug, [...selected], repository),
@@ -280,21 +257,6 @@ export function CapabilityBrowser({
             <Download className="size-3" />
             Download {selected.size || ''}
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!repository}
-            loading={createSetFromDevice.isPending}
-            title={
-              selected.size
-                ? `Build a set from the ${selected.size} ticked modules — only those already downloaded into this repository`
-                : 'Build a set from every advertised module this repository already holds'
-            }
-            onClick={() => createSetFromDevice.mutate()}
-          >
-            <Layers className="size-3" />
-            Make set{selected.size ? ` (${selected.size})` : ''}
-          </Button>
           {selected.size ? (
             <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
               Clear
@@ -347,14 +309,6 @@ export function CapabilityBrowser({
           </p>
         ) : null}
 
-        {selected.size > 0 && repository && !started && !madeSet ? (
-          <p className="mt-1.5 text-[11px] text-ink-faint">
-            <b>Download</b> fetches these into the repository and then offers to
-            make a set. <b>Make set</b> skips the download and uses only what is
-            already there — the same set either way.
-          </p>
-        ) : null}
-
         {!repositories.data?.length && !creatingRepo ? (
           <p className="mt-1.5 text-[11px] text-ink-faint">
             No repositories yet —{' '}
@@ -385,20 +339,12 @@ export function CapabilityBrowser({
           </p>
         ) : null}
 
-        {madeSet ? (
-          <SetCreated
-            created={madeSet}
-            repository={repository}
-            deviceSlug={deviceSlug}
-            onOpenSet={onOpenSet}
-          />
-        ) : null}
-
         {started ? (
           <p className="mt-1.5 flex items-start gap-1 text-[11px] text-ok">
             <CheckCircle2 className="mt-px size-3 shrink-0" />
-            Started “{started}”. It runs in the background — follow it in the task bar at
-            the bottom. You can leave this page.
+            Started “{started}”. It runs in the background — follow it in the task bar
+            at the bottom, which will offer to make a set from these modules when it
+            finishes. You can leave this page.
           </p>
         ) : null}
       </div>
