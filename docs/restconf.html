@@ -50,6 +50,14 @@
         <p>The device needs <code>restconf</code> configured and the HTTPS
         server running — RESTCONF will not start over plain HTTP. See
         <a href="/getting-started#prepare">preparing the device</a>.</p>
+
+        <p>If the device also has <code>ip http server</code> enabled, the
+        plain HTTP port stays open and answers requests, but it returns
+        <code>404 Not Found</code> for every RESTCONF URL. The web server is
+        running; the RESTCONF endpoint is simply not attached to it. A 404
+        over <code>http://</code> for a URL that works over
+        <code>https://</code> is almost always this rather than a wrong
+        path.</p>
       </div>
 
       <h2 id="paths">How a path becomes a URL</h2>
