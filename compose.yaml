@@ -1,0 +1,23 @@
+# YANG Studio — run it with: docker compose up -d
+#
+# This pulls the published image. To build from your working copy instead,
+# replace the `image:` line with `build: .`
+
+services:
+  yangstudio:
+    image: ghcr.io/karmatek-consulting-llc/yangstudio:latest
+    container_name: yangstudio
+    ports:
+      # host:container — change the left side if 8420 is taken
+      - "8420:8420"
+    volumes:
+      # Your repositories, sets and device profiles live here.
+      # Without this, everything is lost when the container is replaced.
+      - yangstudio-data:/data
+    environment:
+      # Raise this if commits on your devices run long.
+      YANGSTUDIO_RPC_TIMEOUT: "120"
+    restart: unless-stopped
+
+volumes:
+  yangstudio-data:

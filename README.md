@@ -55,18 +55,26 @@ The image runs as a non-root user and serves the API and UI from one process.
 ### Docker Compose
 
 ```yaml
+# compose.yaml
 services:
   yangstudio:
     image: ghcr.io/karmatek-consulting-llc/yangstudio:latest
+    container_name: yangstudio
     ports:
       - "8420:8420"
     volumes:
       - yangstudio-data:/data
+    environment:
+      # Raise this if commits on your devices run long.
+      YANGSTUDIO_RPC_TIMEOUT: "120"
     restart: unless-stopped
 
 volumes:
   yangstudio-data:
 ```
+
+That file ships in the repository as `compose.yaml`, so cloning and running
+`docker compose up -d` works without editing anything.
 
 ```bash
 docker compose up -d

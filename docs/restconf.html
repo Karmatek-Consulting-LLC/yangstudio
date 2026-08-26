@@ -10,6 +10,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="/assets/site.css">
+<script src="/assets/copy.js" defer></script>
 </head>
 <body>
 
@@ -40,12 +41,13 @@
 
     <div class="prose">
       <h1>RESTCONF</h1>
-      <p class="lede">The same tree, encoded per RFC 8040. Switch protocol in
-      the request panel and the selection you already built renders as a
-      method, a URL and a JSON body.</p>
+      <p class="lede">RESTCONF carries the same YANG models over ordinary
+      HTTP, using the encoding defined in RFC 8040. Switch the protocol toggle
+      in the request panel and the selection you have already built is
+      re-rendered as an HTTP method, a URL, and a JSON body.</p>
 
       <h2 id="paths">How a path becomes a URL</h2>
-      <p>Three rules do most of the work.</p>
+      <p>Three rules account for almost all of it.</p>
       <ul>
         <li>The first node is qualified by its module — <code>ietf-interfaces:interfaces</code></li>
         <li>Later nodes are bare, unless an augment changes module, which re-qualifies them</li>
@@ -64,22 +66,25 @@ GET /restconf/data/<b>ietf-interfaces:interfaces</b>/interface=<span class="hl">
       </div>
 
       <h2 id="one-resource">One resource per request</h2>
-      <p>This is the real difference. A NETCONF filter carries several branches
-      at once; RESTCONF addresses one resource per call. Several leaves under
-      one parent fold into a single request using a <code>fields</code>
-      query:</p>
+      <p>This is the substantive difference between the two protocols. A
+      NETCONF filter can ask for several unrelated branches in one message,
+      whereas a RESTCONF call addresses exactly one resource. Where several of
+      your selected leaves share a parent, they are folded into a single
+      request using a <code>fields</code> query:</p>
       <pre>GET /restconf/data/ietf-interfaces:interfaces/interface<span class="hl">?fields=name;description;type</span></pre>
-      <p>Anything that cannot fold becomes its own request, and the panel says
-      so rather than hiding it. Each request lists which tree paths it
-      covers.</p>
+      <p>Anything that cannot be folded in becomes a request of its own, and
+      the panel tells you when that happens rather than quietly issuing extra
+      calls. Each planned request lists the tree paths it covers, so you can
+      see exactly which of your selections it accounts for.</p>
     </div>
 
     <figure class="wide"><img src="/img/response-restconf.png" alt="Three leaves folded into one fields query, and the JSON reply." loading="lazy" width="3200" height="1826"><figcaption>Three leaves folded into one fields query, and the JSON reply.</figcaption></figure>
 
     <div class="prose">
       <h2 id="writing">Writing</h2>
-      <p>NETCONF's edit operations map onto HTTP methods. The body names its
-      member with the module that defines it:</p>
+      <p>The NETCONF edit operations have direct HTTP equivalents, so the same
+      selection can be written either way. In the request body, the member is
+      named with the module that defines it:</p>
       <div class="scroll"><table>
         <thead><tr><th>NETCONF</th><th>RESTCONF</th><th>Means</th></tr></thead>
         <tbody>
@@ -104,10 +109,12 @@ Content-Type: application/yang-data+json
       </div>
 
       <h2 id="checking">Checking a device supports it</h2>
-      <p>RESTCONF has no handshake, so without asking you only find out when a
-      request fails. <b>Check RESTCONF</b> on the Devices page reports the root
-      and the optional capabilities that decide what a request can express —
-      <code>fields</code> is the one that makes the folding above legal.</p>
+      <p>Unlike NETCONF, RESTCONF has no handshake that announces itself, so
+      if you do not ask, the first sign that it is unavailable is a request
+      failing. The <b>Check RESTCONF</b> button on the Devices page asks the
+      device directly and reports its root path along with the optional
+      capabilities it supports. The one to look for is <code>fields</code>,
+      since that is what makes the request folding described above legal.</p>
 
       <h2 id="differences">Where the two differ</h2>
       <div class="scroll"><table>

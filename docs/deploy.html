@@ -10,6 +10,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="/assets/site.css">
+<script src="/assets/copy.js" defer></script>
 </head>
 <body>
 
@@ -40,55 +41,83 @@
 
     <div class="prose">
       <h1>Deploying</h1>
-      <p class="lede">One container, one volume. The image serves the API and
-      the UI from a single process and runs as a non-root user.</p>
+      <p class="lede">YANG Studio ships as a single container that serves both
+      the API and the web interface from one process, and it runs as a
+      non-root user. All it needs from you is a volume to keep your models
+      and device profiles in.</p>
 
-      <h2 id="docker">Docker</h2>
-      <pre><b>docker run</b> -d --name yangstudio   -p 8420:8420   -v yangstudio-data:/data   ghcr.io/karmatek-consulting-llc/yangstudio:latest</pre>
-      <p>Built for <code>linux/amd64</code> and <code>linux/arm64</code>, with
-      an SBOM and build provenance attached.</p>
-
-      <h2 id="compose">Docker Compose</h2>
-      <pre>services:
+      <h2 id="compose-file">The Compose file</h2>
+      <p>If you deploy things locally with Compose, this is the whole file.
+      Save it as <code>compose.yaml</code> and run
+      <code>docker compose up -d</code>.</p>
+      <pre><span class="c"># compose.yaml</span>
+services:
   yangstudio:
     image: ghcr.io/karmatek-consulting-llc/yangstudio:latest
+    container_name: yangstudio
     ports:
+      <span class="c"># host:container — change the left side if 8420 is taken</span>
       - "8420:8420"
     volumes:
-      - yangstudio-data:<b>/data</b>
+      <span class="c"># Your repositories, sets and device profiles live here.</span>
+      <span class="c"># Without this, everything is lost when the container is replaced.</span>
+      - yangstudio-data:/data
+    environment:
+      <span class="c"># Raise this if commits on your devices run long.</span>
+      YANGSTUDIO_RPC_TIMEOUT: "120"
     restart: unless-stopped
 
 volumes:
   yangstudio-data:</pre>
-      <pre>docker compose up -d</pre>
+      <p>Then open <a href="http://localhost:8420">localhost:8420</a>. There is
+      nothing else to configure — no database, no separate web server, and no
+      init step.</p>
 
-      <h2 id="volume">The volume</h2>
-      <div class="warn-box">
-        <p><b>Mount <code>/data</code> or you will lose everything you
-        download.</b> It holds your repositories, sets and device profiles, and
-        a container without it starts empty every time it is replaced.</p>
+      <div class="note">
+        <p>If you would rather keep the data somewhere you can browse, swap the
+        named volume for a directory on the host. The path is relative to the
+        Compose file:</p>
+        <pre>    volumes:
+      - <b>./yangstudio-data</b>:/data</pre>
+        <p>This exact file is in the repository as
+        <a href="https://github.com/Karmatek-Consulting-LLC/yangstudio/blob/main/compose.yaml">compose.yaml</a>, so you can
+        also just clone and run it.</p>
       </div>
-      <p>Its layout is deliberately plain, so it is readable and diffable
-      without the app:</p>
+
+      <h2 id="docker">Plain Docker</h2>
+      <p>If you are not using Compose, the equivalent single command is:</p>
+      <pre><b>docker run</b> -d --name yangstudio   -p 8420:8420   -v yangstudio-data:/data   ghcr.io/karmatek-consulting-llc/yangstudio:latest</pre>
+      <p>The image is built for both <code>linux/amd64</code> and
+      <code>linux/arm64</code>, so it runs natively on Apple Silicon as well as
+      on ordinary servers. Each build publishes an SBOM and a signed provenance
+      attestation alongside it.</p>
+
+      <h2 id="volume">What the volume holds</h2>
+      <div class="warn-box">
+        <p><b>Make sure <code>/data</code> is mounted somewhere persistent.</b>
+        It holds your repositories, your sets and your device profiles. A
+        container started without it will work perfectly well, and then lose
+        everything the moment it is replaced or upgraded.</p>
+      </div>
+      <p>The layout inside it is deliberately plain, so you can read, diff and
+      version-control the contents without going through the app at all:</p>
       <pre>/data
 ├── repositories/&lt;name&gt;/*.yang   <span class="c"># plain YANG files</span>
 ├── yangsets/&lt;name&gt;.json         <span class="c"># which modules, at which revisions</span>
 ├── devices/&lt;name&gt;.json          <span class="c"># connection profiles</span>
 └── cache/                       <span class="c"># header index, safe to delete</span></pre>
 
-      <p>To keep it somewhere you can see, bind-mount a directory instead:</p>
-      <pre>    volumes:
-      - <b>./yangstudio-data</b>:/data</pre>
-
       <div class="warn-box">
         <p><b>Device passwords are stored in plain text</b> in
-        <code>/data/devices/*.json</code>, because the app must replay them to
-        authenticate. Treat that volume as a secret: keep it off shared
-        storage, and out of version control.</p>
+        <code>/data/devices/*.json</code>. They have to be recoverable, because
+        the app replays them to authenticate against your devices, so they
+        cannot be hashed the way a user password would be. Treat that volume as
+        a secret: keep it off shared storage and out of version control.</p>
       </div>
 
       <h2 id="config">Configuration</h2>
-      <p>All optional.</p>
+      <p>Every one of these is optional, and the defaults are sensible for a
+      local deployment.</p>
       <div class="scroll"><table>
         <thead><tr><th>Variable</th><th>Default</th><th>Means</th></tr></thead>
         <tbody>
@@ -101,9 +130,10 @@ volumes:
         </tbody>
       </table></div>
 
-      <h2 id="memory">Sizing</h2>
-      <p>Parsing is the expensive step and it is proportional to the set you
-      open, not to the repository. Measured on the IETF RFC collection:</p>
+      <h2 id="memory">How much machine it needs</h2>
+      <p>Parsing the models is the expensive part, and the cost scales with the
+      set you open rather than with the size of your repository. These
+      measurements come from the IETF RFC collection:</p>
       <div class="scroll"><table>
         <thead><tr><th>Operation</th><th>Cost</th></tr></thead>
         <tbody>
@@ -113,16 +143,18 @@ volumes:
           <tr><td>Search across 11,403 nodes</td><td>0.02 s</td></tr>
         </tbody>
       </table></div>
-      <p>Large vendor-native sets are memory-hungry; a few gigabytes is
-      reasonable for those. A handful of IETF modules needs very little.</p>
+      <p>Large vendor-native models are the memory-hungry case, and a few
+      gigabytes is a reasonable allowance if you plan to open those. A handful
+      of IETF modules needs very little.</p>
 
       <h2 id="source">From source</h2>
       <p>Needs <a href="https://docs.astral.sh/uv/">uv</a> and Node 22+.</p>
       <pre>git clone https://github.com/Karmatek-Consulting-LLC/yangstudio
 cd yangstudio
 ./run.sh</pre>
-      <p>The script creates the virtualenv, installs dependencies, finds free
-      ports — 8420 and 5173 are commonly taken — and prints both URLs.</p>
+      <p>The script creates the virtual environment, installs the
+      dependencies, and finds free ports before starting — 8420 and 5173 are
+      both commonly in use — then prints the URLs it settled on.</p>
     </div>
 
     <footer class="site">

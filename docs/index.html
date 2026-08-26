@@ -10,6 +10,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="/assets/site.css">
+<script src="/assets/copy.js" defer></script>
 </head>
 <body>
 
@@ -39,10 +40,12 @@
   <main>
 
     <div class="prose">
-      <h1>Browse a device's YANG models, then drive it</h1>
-      <p class="lede">Connect over NETCONF, download the schemas the device
-      advertises, explore them as a tree, and build requests from that tree —
-      as NETCONF XML or RESTCONF URLs, run against the live device.</p>
+      <h1>Explore your device's YANG models</h1>
+      <p class="lede">YANG Studio connects to your network devices, downloads
+      the YANG models they publish, and lets you browse those models as a tree.
+      When you find the data you are after, you can build a NETCONF or RESTCONF
+      request from the tree and send it to the device without leaving the
+      page.</p>
 
       <pre><b>docker run</b> -p 8420:8420 -v yangstudio-data:/data \
   ghcr.io/karmatek-consulting-llc/yangstudio:latest</pre>
@@ -54,31 +57,36 @@
     <div class="prose">
       <h2 id="what">What it does</h2>
 
-      <h3>Reads schemas off the device</h3>
-      <p>A NETCONF session tells you every module the device implements, with
-      the revision, the optional features it turned on, and the vendor
-      deviations it applies. Download the ones you want — in the background,
-      with progress you can walk away from.</p>
+      <h3>Schema discovery</h3>
+      <p>When you connect over NETCONF, the device lists every YANG module it
+      implements, along with the revision it uses, the optional features it has
+      turned on, and any vendor deviations it applies. You choose which of
+      those modules to download. The download runs in the background, so you
+      can carry on working or close the page while it finishes.</p>
 
-      <h3>Parses them into something you can navigate</h3>
-      <p>The tree is virtualised, so a set with a hundred thousand nodes scrolls
-      at full speed. Filtering is live, and matches keep their ancestors so you
-      can see where a result sits rather than getting a flat list of names.</p>
+      <h3>A tree you can actually navigate</h3>
+      <p>The models are parsed into a browsable tree. Only the rows on screen
+      are rendered, so even a set with a hundred thousand nodes scrolls
+      smoothly. The filter box works as you type, and when a node matches, its
+      parents stay visible around it — you see where the result sits in the
+      model rather than a flat list of names with no context.</p>
 
-      <h3>Tells you what a node actually is</h3>
-      <p>Type and the typedef chain beneath it, range and pattern constraints,
-      allowed values, both paths, and whether it is
-      <span class="tag tag-config">config</span> you can write or
-      <span class="tag tag-state">state</span> the device reports.</p>
+      <h3>Full detail on every node</h3>
+      <p>Selecting a node shows you its type and the chain of typedefs beneath
+      it, any range or pattern constraints, the values it will accept, and both
+      of the paths that address it. It also tells you whether the node is
+      <span class="tag tag-config">config</span> that you can write to, or
+      <span class="tag tag-state">state</span> that the device only reports.</p>
 
-      <h3>Builds requests from the tree</h3>
-      <p>Tick nodes and the request is written as you go — NETCONF XML, or the
-      RESTCONF method, URL and JSON body. Run either against a device and read
-      the reply formatted and highlighted.</p>
+      <h3>Requests built from the model</h3>
+      <p>As you tick nodes in the tree, the request is written for you: either
+      the NETCONF XML, or the RESTCONF method, URL and JSON body. You can send
+      it to the device from the same panel, and the reply comes back formatted
+      and syntax-highlighted rather than as one long line.</p>
 
       <h2 id="themes">Light and dark</h2>
-      <p>The interface follows your system theme, and can be switched from the
-      top bar.</p>
+      <p>The interface follows whichever theme your system is set to, and you
+      can override it from the button in the top bar.</p>
     </div>
 
     <figure class="wide"><img src="/img/explore-light.png" alt="The same view in the light theme." loading="lazy" width="3200" height="1826"><figcaption>The same view in the light theme.</figcaption></figure>
@@ -88,20 +96,24 @@
       <div class="cards">
         <a class="card" href="/getting-started">
           <h3>Getting started →</h3>
-          <p>From an empty install to a request running against your device.</p>
+          <p>Walk through the whole flow, from an empty install to a request
+          running against one of your devices.</p>
         </a>
         <a class="card" href="/concepts">
           <h3>YANG concepts →</h3>
-          <p>What a capability string is, what you download, and why a
-          repository and a set are different things.</p>
+          <p>If the terminology is new to you, start here. It covers what a
+          capability string is, what you are downloading, and why a repository
+          and a set are two different things.</p>
         </a>
         <a class="card" href="/netconf">
           <h3>NETCONF →</h3>
-          <p>Filters, datastores, and why a write may need a commit.</p>
+          <p>How filters are built, what the datastores are for, and why a
+          write to some devices needs a commit afterwards.</p>
         </a>
         <a class="card" href="/restconf">
           <h3>RESTCONF →</h3>
-          <p>The same tree over HTTP, and where the two protocols differ.</p>
+          <p>The same models over HTTP, how a YANG path becomes a URL, and
+          where the two protocols part company.</p>
         </a>
       </div>
     </div>

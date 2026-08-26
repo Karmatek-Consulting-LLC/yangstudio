@@ -10,6 +10,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="/assets/site.css">
+<script src="/assets/copy.js" defer></script>
 </head>
 <body>
 
@@ -39,24 +40,29 @@
   <main>
 
     <div class="prose">
-      <h1>YANG, from inside the app</h1>
-      <p class="lede">Every example here is real output from a Cisco IOS-XE
-      device. Nothing is invented.</p>
+      <h1>YANG concepts</h1>
+      <p class="lede">If the vocabulary around YANG is new to you, this page
+      explains it through the things YANG Studio actually shows you. Every
+      example below is real output from a Cisco IOS-XE device rather than an
+      invented sample.</p>
 
       <div class="note">
-        <p><b>The one idea: YANG is a schema language, not a protocol.</b></p>
-        <p>A <code>.yang</code> file describes what data a device holds — the
-        shape of the tree, the type of every leaf, which parts are
-        configurable. It says nothing about how you read or write that data.
-        NETCONF, RESTCONF and gNMI are three transports carrying
-        <em>the same tree</em>.</p>
+        <p><b>The one idea worth starting with: YANG is a schema language,
+        not a protocol.</b></p>
+        <p>A <code>.yang</code> file describes the data a device holds. It
+        defines the shape of the tree, the type of every leaf, and which parts
+        of it you are allowed to change. What it does not describe is how you
+        read or write any of that. NETCONF, RESTCONF and gNMI are three
+        different ways of moving <em>the same tree</em> across the network, and
+        learning the model is what carries across all three.</p>
       </div>
 
       <h2 id="connect">What comes back when you connect</h2>
-      <p>A NETCONF session opens with both sides announcing what they support.
-      This device sends back <b>522 capability strings</b>: 15 describing the
-      protocol, 507 describing YANG modules. Here is one of the 507, exactly as
-      it arrived:</p>
+      <p>When a NETCONF session opens, the client and the device each announce
+      what they support. The device in this example sends back <b>522
+      capability strings</b>: 15 that describe the protocol itself, and 507
+      that describe the YANG modules it implements. Here is one of those 507,
+      exactly as it arrived:</p>
 
       <pre>urn:ietf:params:xml:ns:yang:ietf-interfaces?module=<b>ietf-interfaces</b>&amp;revision=<span class="warn">2014-05-08</span>
   &amp;features=<span class="ok">pre-provisioning,if-mib,arbitrary-names</span>
@@ -74,15 +80,19 @@
       </table></div>
 
       <div class="warn-box">
-        <p><b>This is a promise, not the schema.</b> The device is saying "I
-        implement ietf-interfaces at this revision". It has not sent you the
-        model, and you still do not know what is in it.</p>
+        <p><b>A capability is a promise, not the schema itself.</b> The device
+        is telling you that it implements <code>ietf-interfaces</code> at that
+        revision. It has not sent you the model, so at this point you still do
+        not know what is inside it. Downloading is a separate step.</p>
       </div>
 
       <h2 id="download">What you are downloading</h2>
-      <p>Pressing Download issues one <code>&lt;get-schema&gt;</code> request
-      per module, and the device returns the module's source. That text
-      <em>is</em> the schema, and reading it is the fastest way into YANG:</p>
+      <p>When you press Download, YANG Studio sends one
+      <code>&lt;get-schema&gt;</code> request for each module you picked, and
+      the device replies with the module's source text. That text <em>is</em>
+      the schema. It is meant to be read by people as well as parsers, and
+      reading a little of it is the quickest way to get comfortable with
+      YANG:</p>
 
       <pre><b>container</b> interfaces {          <span class="c">// a fixed node — exists once</span>
   <b>list</b> interface {             <span class="c">// repeats; one entry per interface</span>
@@ -97,44 +107,58 @@
     }
   }
 }</pre>
-      <p>Four keywords carry most of YANG. <b>container</b> groups.
-      <b>list</b> repeats and needs a <b>key</b>. <b>leaf</b> holds one typed
-      value. Everything else refines those.</p>
+      <p>Four keywords do most of the work in YANG. A <b>container</b> groups
+      related nodes together and appears once. A <b>list</b> repeats, with one
+      entry per interface or neighbour or route, and it needs a <b>key</b> to
+      tell those entries apart. A <b>leaf</b> holds a single typed value, and
+      that is where the actual data lives. Almost everything else in the
+      language is a refinement of those four.</p>
 
       <h2 id="imports">Why it asks for other modules too</h2>
-      <p>Modules borrow types from each other, and say so at the top:</p>
+      <p>Modules are not self-contained. They borrow type definitions from one
+      another, and they declare that at the top of the file:</p>
       <pre><span class="c">// in ietf-ip.yang</span>
 <b>import</b> ietf-inet-types { <b>prefix</b> inet; }
 
 <span class="c">// and later</span>
 <b>leaf</b> address { <b>type</b> <span class="hl">inet:ipv4-address-no-zone</span>; }</pre>
-      <p>What is an <code>ipv4-address-no-zone</code>? Nothing in
-      <code>ietf-ip</code> answers that — the definition lives in the other
-      file, as a string with a validation pattern. Without it the parser
-      genuinely cannot tell you what that leaf accepts.</p>
-      <p>That is what <em>"will not parse yet — 4 imports missing"</em> means.
-      It is not fussiness; the tree cannot be built.</p>
+      <p>So what is an <code>ipv4-address-no-zone</code>? Nothing in
+      <code>ietf-ip</code> answers that question. The definition lives in the
+      other file, where it turns out to be a string with a validation pattern
+      attached. Without that second file, the parser genuinely cannot tell you
+      what the leaf will accept, what to validate against, or what to suggest
+      while you type.</p>
+      <p>That is what the message <em>"will not parse yet — 4 imports
+      missing"</em> is telling you. It is not the app being fussy. The tree
+      cannot be built at all until those files are present.</p>
 
       <h2 id="repo-vs-set">Why a repository <em>and</em> a set</h2>
-      <p>They answer different questions, and this is the distinction that
-      trips people up.</p>
+      <p>This is the distinction that catches most people out, and it is worth
+      being precise about, because the two answer genuinely different
+      questions.</p>
       <div class="cards">
         <div class="card">
           <h3>Repository</h3>
-          <p><b>"What files do I have?"</b> A directory of <code>.yang</code>
-          files. An inventory. It may hold the same module at several
-          revisions, and modules that contradict each other. A filing cabinet
-          is not required to be consistent.</p>
+          <p><b>"What files do I have?"</b></p>
+          <p>A repository is a directory of <code>.yang</code> files — an
+          inventory of everything you have collected. It is allowed to hold the
+          same module at several different revisions, and to hold modules that
+          contradict one another. A filing cabinet does not have to be
+          internally consistent.</p>
         </div>
         <div class="card">
           <h3>Set</h3>
-          <p><b>"Which modules resolve into one valid tree?"</b> Specific
-          modules at specific revisions that parse together. This is the unit
-          you explore and query, and it must be internally consistent.</p>
+          <p><b>"Which modules resolve into one valid tree?"</b></p>
+          <p>A set names specific modules, at specific revisions, that can be
+          parsed together successfully. This is the unit you explore and build
+          requests against, and unlike a repository it does have to be
+          consistent.</p>
         </div>
       </div>
 
-      <p>Why a repository cannot simply be parsed whole — two measurements:</p>
+      <p>You might reasonably ask why the app cannot just parse the whole
+      repository and skip the extra step. These two measurements are the
+      answer:</p>
       <div class="scroll"><table>
         <thead><tr><th>Parsed</th><th>Modules</th><th>Result</th></tr></thead>
         <tbody>
@@ -142,10 +166,12 @@
           <tr><td>One BFD module</td><td>9</td><td><b>0 errors</b>, 250 nodes</td></tr>
         </tbody>
       </table></div>
-      <p>On top of that, 23 module names in the IETF collection exist at two
-      different revisions, and a tree can only use one. So there is no such
-      thing as "the tree for this repository" — a set is what makes a tree
-      possible at all.</p>
+      <p>Those BFD modules all add nodes to the same place in the routing
+      tree, so loading them together produces a genuine conflict. On top of
+      that, 23 of the module names in the IETF collection exist at two
+      different revisions, and a single tree can only use one of them. Between
+      the two problems, there is no such thing as "the tree for this
+      repository". Choosing a set is what makes a tree possible at all.</p>
 
     </div>
 
@@ -153,11 +179,13 @@
 
     <div class="prose">
       <h2 id="using-a-set">What a set gets you</h2>
-      <p>Every node carries two things that matter for doing work. First, a
-      path that addresses it:</p>
+      <p>Once a set is parsed, every node in it carries two pieces of
+      information that you will use constantly. The first is a path that
+      addresses it:</p>
       <pre>/if:interfaces/if:interface/if:description</pre>
-      <p>Second, whether you can write to it. YANG marks operational data
-      <code>config false</code>, and the app shows that as a badge:</p>
+      <p>The second is whether you are allowed to write to it. YANG marks
+      operational data with <code>config false</code>, and YANG Studio turns
+      that into a badge on every node:</p>
       <div class="scroll"><table>
         <thead><tr><th>Badge</th><th>Means</th><th>Example</th></tr></thead>
         <tbody>
@@ -165,25 +193,30 @@
           <tr><td><span class="tag tag-state">state</span></td><td>Read-only — the device reports it</td><td><code>interface/oper-status</code></td></tr>
         </tbody>
       </table></div>
-      <p>Trying to write a state node is one of the commonest early mistakes.
-      The tree tells you before you try.</p>
+      <p>Attempting to write to a state node is one of the most common
+      mistakes when you are starting out. The badge tells you before you
+      try, rather than the device rejecting the request afterwards.</p>
 
       <h3>Features narrow the tree</h3>
-      <p>Because the device declared it implements
-      <code>pre-provisioning, if-mib, arbitrary-names</code> and nothing else,
-      a set built from its capabilities prunes what is not there — on this
-      device that removed <code>if-index</code> and
-      <code>link-up-down-trap-enable</code>. Small here; on a full vendor
-      model it is the difference between a schema and a schema that matches the
-      box in front of you.</p>
+      <p>Parts of a YANG module can be marked optional, and a device declares
+      which of those it has turned on. The device in these examples implements
+      <code>pre-provisioning</code>, <code>if-mib</code> and
+      <code>arbitrary-names</code>, and nothing else. Because YANG Studio knows
+      that, a set built from the device's own capabilities leaves out the nodes
+      it does not support — here that removed <code>if-index</code> and
+      <code>link-up-down-trap-enable</code>.</p>
+      <p>The difference is small in this example, but on a full vendor model it
+      is the difference between a schema for the product family and a schema
+      for the box actually in front of you.</p>
     </div>
 
     <figure class="wide"><img src="/img/identityref-values.png" alt="An identityref resolves through the whole identity hierarchy, not one level." loading="lazy" width="3200" height="1826"><figcaption>An identityref resolves through the whole identity hierarchy, not one level.</figcaption></figure>
 
     <div class="prose">
       <h2 id="vocabulary">The vocabulary</h2>
-      <p>Everything you will meet in the tree. The first four are ninety
-      percent of it.</p>
+      <p>These are the terms you will run into while browsing a tree. As
+      above, the first four account for the large majority of what you will
+      see.</p>
       <div class="scroll"><table>
         <tbody>
           <tr><td><code>container</code></td><td>Groups other nodes. Exists once.</td></tr>
