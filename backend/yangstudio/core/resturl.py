@@ -68,12 +68,16 @@ class PathNode:
     module: str
     nodetype: str
     keys: list[str] = field(default_factory=list)
+    # The module prefix, so the builder can address a node the same way the
+    # caller does. Two modules can define the same data path, so anything
+    # keyed on names alone is ambiguous.
+    prefix: str = ""
 
 
 def build_path(nodes: list[PathNode], key_values: dict[str, dict[str, str]]) -> str:
     """Render ``/restconf/data/...`` for a resolved chain of nodes.
 
-    ``key_values`` maps a list node's data path to ``{key name: value}``.
+    ``key_values`` maps a list node's *prefixed* path to ``{key name: value}``.
     """
     if not nodes:
         raise RestconfError("empty path")
@@ -83,7 +87,7 @@ def build_path(nodes: list[PathNode], key_values: dict[str, dict[str, str]]) -> 
     walked: list[str] = []
 
     for node in nodes:
-        walked.append(node.name)
+        walked.append(f"{node.prefix}:{node.name}" if node.prefix else node.name)
         # Qualify on the first segment and whenever the module changes: that is
         # how an augment from another module announces itself.
         if node.module and node.module != previous_module:
