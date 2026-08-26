@@ -46,6 +46,12 @@
       unrelated parts of the tree at once, which is the main thing that sets it
       apart from RESTCONF.</p>
 
+      <div class="note">
+        <p>The device needs <code>netconf-yang</code> configured, and AAA set
+        up so it will authorise the session. See
+        <a href="/getting-started#prepare">preparing the device</a>.</p>
+      </div>
+
       <h2 id="reading">Reading</h2>
       <p>If you select three leaves that live under the same list, you get a
       single <code>get-config</code> whose filter names all three. Selections

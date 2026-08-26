@@ -140,10 +140,33 @@ Everything is optional.
 
 ## Getting started
 
-1. **Devices** → add your device → **Connect**. NETCONF needs AAA configured;
-   on IOS-XE that means `aaa new-model`, `aaa authentication login default local`
-   and `aaa authorization exec default local`. Without it the session opens and
-   closes without a hello, and the app will tell you so.
+First, make sure the device is running the services. On IOS-XE, the whole
+thing is:
+
+```
+conf t
+ aaa new-model
+ aaa authentication login default local
+ aaa authorization exec default local
+ netconf-yang
+ netconf-yang feature candidate-datastore
+ ip http secure-server
+ ip http authentication local
+ no ip http server
+ restconf
+end
+```
+
+Apply the three AAA lines together — `aaa new-model` alone changes how logins
+are authenticated and can lock you out. Exec authorisation is the one people
+miss: without it a NETCONF session opens and is then dropped without a hello,
+which looks like a credential problem and is not. Check with
+`show netconf-yang status` and `show platform software yang-management process`.
+[Full explanation in the docs](https://yangstudio.karmatek.io/getting-started#prepare).
+
+Then:
+
+1. **Devices** → add your device → **Connect**.
 2. Pick the modules you want — the family filters cut a 500-module list down
    fast — choose a repository, and **Download**. It runs in the background.
 3. When it finishes, **Create set from these**. Imports are pulled in
