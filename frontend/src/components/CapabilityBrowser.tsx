@@ -363,9 +363,9 @@ export function CapabilityBrowser({
           </p>
         ) : selected.size === 0 && !creatingRepo ? (
           <p className="mt-1.5 text-[11px] text-ink-faint">
-            Tick the modules you want. Downloading all {capabilities.modules.length} takes a
-            while and pulls in {families.find((f) => f.id === 'mib')?.count ?? 0} SNMP MIBs you
-            probably don't need.
+            Tick the modules you want — anything they import is fetched with them.
+            Downloading all {capabilities.modules.length} takes a while and pulls in{' '}
+            {families.find((f) => f.id === 'mib')?.count ?? 0} SNMP MIBs you probably don't need.
           </p>
         ) : null}
 

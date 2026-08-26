@@ -188,49 +188,124 @@ def download_schemas(
     module_names: list[str],
     on_progress: Callable[[str, int, int], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
+    follow_dependencies: bool = True,
+    have: set[str] | None = None,
 ) -> dict:
     """Pull YANG schemas off the device via <get-schema>.
 
     Each module is a separate round trip (~1s against real hardware), so this
-    reports progress per module and checks for cancellation between them —
-    a few hundred modules is minutes of work.
+    reports progress per module and checks for cancellation between them.
+
+    Two things make it more than a loop:
+
+    *Dependencies are followed.* A module that imports another is useless
+    without it — the set will not parse — so each downloaded module is scanned
+    for its imports and includes, and anything not already present is queued.
+    The queue grows as it runs, the way a package manager resolves a tree.
+
+    *A dropped session is rebuilt.* Devices close NETCONF sessions for their
+    own reasons, and once one closes every later request on it fails too.
+    Rather than letting that cascade, a transport failure reconnects and
+    retries the module once.
     """
-    connection = get_session(device)
-    results, errors = {}, {}
-    total = len(module_names)
-    consecutive_failures = 0
+    results: dict[str, str] = {}
+    errors: dict[str, str] = {}
+    pulled_in: list[str] = []
     aborted = ""
 
-    for index, name in enumerate(module_names, start=1):
+    queue = list(dict.fromkeys(module_names))     # de-duplicate, keep order
+    requested = set(queue)
+    # Modules already in the repository do not need fetching again.
+    seen = set(queue) | (have or set())
+    done = 0
+    consecutive_failures = 0
+
+    connection = get_session(device)
+
+    while queue:
         if should_cancel is not None and should_cancel():
             break
+        name = queue.pop(0)
         if on_progress is not None:
-            on_progress(name, index, total)
-        try:
-            reply = connection.get_schema(name)
-            # ncclient returns the schema wrapped in an RPC reply.
-            data = getattr(reply, "data", None)
-            text = data if isinstance(data, str) else str(reply)
-            results[name] = text
-            consecutive_failures = 0
-        except RPCError as exc:
-            # The device answered and said no: that is about this module, not
-            # the session, so it does not count towards the breaker.
-            errors[name] = str(exc)
-        except Exception as exc:
-            errors[name] = f"{type(exc).__name__}: {exc}"
-            consecutive_failures += 1
-            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-                aborted = (
-                    f"stopped after {consecutive_failures} consecutive transport "
-                    f"failures at {name!r} — the session looks dead"
-                )
-                # A broken session will not fix itself; drop it so the next
-                # attempt reconnects instead of reusing a dead channel.
-                close_session(device.slug)
-                break
+            on_progress(name, done, done + len(queue) + 1)
 
-    return {"schemas": results, "errors": errors, "aborted": aborted}
+        text, failure = _fetch_schema(device, connection, name)
+        if failure is not None and failure.retryable:
+            # The session is gone; a fresh one usually works.
+            close_session(device.slug)
+            connection = get_session(device, reuse=False)
+            text, failure = _fetch_schema(device, connection, name)
+
+        done += 1
+
+        if failure is not None:
+            errors[name] = failure.message
+            if failure.retryable:
+                consecutive_failures += 1
+                if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                    aborted = (
+                        f"stopped after {consecutive_failures} modules failed in a "
+                        f"row at {name!r} — the device is not answering"
+                    )
+                    close_session(device.slug)
+                    break
+            continue
+
+        consecutive_failures = 0
+        results[name] = text
+
+        if follow_dependencies:
+            for dep in _dependencies_of(text):
+                if dep in seen:
+                    continue
+                seen.add(dep)
+                queue.append(dep)
+                if dep not in requested:
+                    pulled_in.append(dep)
+
+    return {
+        "schemas": results,
+        "errors": errors,
+        "aborted": aborted,
+        # Which modules were added because something else imported them.
+        "pulled_in": sorted(pulled_in),
+    }
+
+
+@dataclass
+class _Failure:
+    message: str
+    retryable: bool
+
+
+def _fetch_schema(device: Device, connection, name: str) -> tuple[str, _Failure | None]:
+    """One <get-schema>. Returns (text, failure); exactly one is meaningful."""
+    try:
+        reply = connection.get_schema(name)
+        # ncclient returns the schema wrapped in an RPC reply.
+        data = getattr(reply, "data", None)
+        return (data if isinstance(data, str) else str(reply)), None
+    except RPCError as exc:
+        # The device answered and said no — that is about this module, not the
+        # session, so reconnecting would not help.
+        return "", _Failure(str(exc), retryable=False)
+    except TRANSPORT_FAILURES as exc:
+        return "", _Failure(f"{type(exc).__name__}: {exc}", retryable=True)
+    except Exception as exc:
+        return "", _Failure(f"{type(exc).__name__}: {exc}", retryable=True)
+
+
+def _dependencies_of(text: str) -> list[str]:
+    """Modules this one imports or includes, from its header alone."""
+    from ..core.quickparse import parse_text
+
+    info = parse_text(text)
+    if info is None:
+        return []
+    deps = list(info.imports) + list(info.includes)
+    if info.belongs_to:
+        deps.append(info.belongs_to)
+    return deps
 
 
 # Failures that mean the session itself is unusable, as opposed to the device

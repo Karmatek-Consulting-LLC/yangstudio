@@ -566,6 +566,9 @@ def netconf_download_schemas(slug: str, body: S.SchemaDownload) -> dict:
         f"{len(modules)} schema{'' if len(modules) == 1 else 's'} "
         f"from {device.name} → {target}"
     )
+    # Anything already downloaded does not need fetching again when following
+    # a dependency tree.
+    already_have = {m.name for m in repo.modules()} if repo is not None else set()
 
     def run(handle) -> dict:
         handle.set_total(len(modules))
@@ -573,13 +576,18 @@ def netconf_download_schemas(slug: str, body: S.SchemaDownload) -> dict:
         # module and can take seconds; say so rather than sitting at 0%.
         handle.set_progress(0, f"Connecting to {device.name}\u2026")
 
-        def progress(name: str, index: int, _total: int) -> None:
-            # Called just before fetching module `index` (1-based), so exactly
-            # index-1 are complete at this point.
-            handle.set_progress(index - 1, name)
+        def progress(name: str, done: int, total: int) -> None:
+            # The total grows as imports are discovered, so it is reported
+            # rather than fixed when the job starts.
+            handle.set_total(total)
+            handle.set_progress(done, name)
 
         result = netconf_svc.download_schemas(
-            device, modules, on_progress=progress, should_cancel=handle.cancelled
+            device,
+            modules,
+            on_progress=progress,
+            should_cancel=handle.cancelled,
+            have=already_have,
         )
         for name, message in result["errors"].items():
             handle.record_error(name, message)
@@ -593,19 +601,26 @@ def netconf_download_schemas(slug: str, body: S.SchemaDownload) -> dict:
 
         downloaded = sorted(result["schemas"])
         failed = len(result["errors"])
+        pulled_in = result.get("pulled_in", [])
         handle.set_progress(len(downloaded) + failed, "")
         aborted = result.get("aborted", "")
-        message = f"Saved {saved} of {len(modules)}"
+
+        message = f"Saved {saved} of {len(downloaded) + failed}"
+        if pulled_in:
+            message += (
+                f" ({len(pulled_in)} pulled in as dependencies)"
+            )
         if failed:
             message += f", {failed} failed"
         if aborted:
             message += f" — {aborted}"
         return {
             "downloaded": downloaded,
+            "pulled_in": pulled_in,
             "saved_to_repository": saved,
             "repository": repo.slug if repo else "",
-            # Carried so the UI can offer to fetch any imports this download
-            # turns out to be missing, without asking which device it came from.
+            # Carried so the UI can offer to fetch anything still missing
+            # without asking which device it came from.
             "device": device.slug,
             "failed": failed,
             "aborted": aborted,
