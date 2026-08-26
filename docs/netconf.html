@@ -160,6 +160,11 @@
       message the client has already given up on, leaves the channel out of
       step, and every request after it would time out as well. Simply trying
       again reconnects and works.</p>
+      <p>The same applies during a download. Devices close NETCONF sessions for
+      their own reasons, and a long download is exactly when that tends to
+      happen. When it does, the module that failed is retried once on a fresh
+      session rather than being written off — and rather than every module
+      after it failing on the same dead connection.</p>
     </div>
 
     <footer class="site">

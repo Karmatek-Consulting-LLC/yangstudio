@@ -144,10 +144,17 @@ aaa authorization exec default local</pre>
           itself you have to ask for it. Tick the modules you want, choose the
           repository to save them into (you can create one without leaving the
           page), and press <b>Download</b>.</p>
+          <p>You do not have to work out what else a module needs. Each one
+          that arrives is scanned for its imports, and anything missing is
+          added to the queue and fetched too, the same way a package manager
+          resolves a dependency tree. Asking for <code>ietf-ip</code> on the
+          device in these examples brings down four modules, because it needs
+          three others to be usable at all.</p>
           <p>Each module is a separate request to the device and takes roughly
           a second, so the download runs as a background job. You are free to
           navigate away or reload the page while it works — the task bar along
-          the bottom keeps track of it.</p>
+          the bottom keeps track of it, and the total climbs as dependencies
+          are discovered.</p>
         </div></div>
 
         <div class="step"><div>
@@ -157,10 +164,11 @@ aaa authorization exec default local</pre>
           into a single tree, and the set is what you actually explore. When a
           download finishes, the task bar offers to build one from exactly the
           modules it just fetched.</p>
-          <p>Modules depend on each other, so any imports that are already in
-          your repository get added for you. If something is still missing,
-          YANG Studio tells you which module it needs and offers to download
-          it, since the device publishes those as well.</p>
+          <p>Because the download already pulled in everything the modules
+          import, the set will usually parse the moment it is created. If
+          something is still missing — a module the device names but will not
+          serve, for instance — YANG Studio tells you which one and offers to
+          fetch it.</p>
           <p><a href="/concepts#repo-vs-set">Why these are two different
           things →</a></p>
         </div></div>
@@ -539,6 +547,11 @@ aaa authorization exec default local</pre>
       message the client has already given up on, leaves the channel out of
       step, and every request after it would time out as well. Simply trying
       again reconnects and works.</p>
+      <p>The same applies during a download. Devices close NETCONF sessions for
+      their own reasons, and a long download is exactly when that tends to
+      happen. When it does, the module that failed is retried once on a fresh
+      session rather than being written off — and rather than every module
+      after it failing on the same dead connection.</p>
     </div>
 """))
 
