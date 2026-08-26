@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RESTCONF · YANG Studio</title>
+<meta name="description" content="The same tree over HTTP: path encoding, fields queries, and where it differs from NETCONF.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌲</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M13 15h4"/></svg> YANG Studio</a>
+  <nav>
+    <a href="/getting-started">Get started</a>
+    <a href="/concepts">Concepts</a>
+    <a href="/deploy">Deploy</a>
+    <a class="gh" href="https://github.com/Karmatek-Consulting-LLC/yangstudio"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.721.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> GitHub</a>
+  </nav>
+</header>
+
+<div class="shell">
+  <aside class="sidenav">
+      <h4>Start</h4>
+      <a href="/">Overview</a>
+      <a href="/getting-started">Getting started</a>
+      <a href="/concepts">YANG concepts</a>
+      <h4>Protocols</h4>
+      <a href="/netconf">NETCONF</a>
+      <a href="/restconf" aria-current="page">RESTCONF</a>
+      <h4>Operate</h4>
+      <a href="/deploy">Deploying</a>
+      <a href="/api">HTTP API</a>
+  </aside>
+  <main>
+
+    <div class="prose">
+      <h1>RESTCONF</h1>
+      <p class="lede">The same tree, encoded per RFC 8040. Switch protocol in
+      the request panel and the selection you already built renders as a
+      method, a URL and a JSON body.</p>
+
+      <h2 id="paths">How a path becomes a URL</h2>
+      <p>Three rules do most of the work.</p>
+      <ul>
+        <li>The first node is qualified by its module — <code>ietf-interfaces:interfaces</code></li>
+        <li>Later nodes are bare, unless an augment changes module, which re-qualifies them</li>
+        <li>A list entry carries its keys in the path — <code>interface=GigabitEthernet1</code></li>
+      </ul>
+      <pre><span class="c"># the YANG path</span>
+/if:interfaces/if:interface/if:description
+
+<span class="c"># the same node, addressed over RESTCONF</span>
+GET /restconf/data/<b>ietf-interfaces:interfaces</b>/interface=<span class="hl">GigabitEthernet1</span>/description</pre>
+
+      <div class="note">
+        <p><b>Keys are percent-encoded.</b> This matters immediately on Cisco
+        kit — <code>Gi0/0/1</code> becomes <code>Gi0%2F0%2F1</code>, because an
+        unescaped slash would look like another path segment.</p>
+      </div>
+
+      <h2 id="one-resource">One resource per request</h2>
+      <p>This is the real difference. A NETCONF filter carries several branches
+      at once; RESTCONF addresses one resource per call. Several leaves under
+      one parent fold into a single request using a <code>fields</code>
+      query:</p>
+      <pre>GET /restconf/data/ietf-interfaces:interfaces/interface<span class="hl">?fields=name;description;type</span></pre>
+      <p>Anything that cannot fold becomes its own request, and the panel says
+      so rather than hiding it. Each request lists which tree paths it
+      covers.</p>
+    </div>
+
+    <figure class="wide"><img src="/img/response-restconf.png" alt="Three leaves folded into one fields query, and the JSON reply." loading="lazy" width="3200" height="1826"><figcaption>Three leaves folded into one fields query, and the JSON reply.</figcaption></figure>
+
+    <div class="prose">
+      <h2 id="writing">Writing</h2>
+      <p>NETCONF's edit operations map onto HTTP methods. The body names its
+      member with the module that defines it:</p>
+      <div class="scroll"><table>
+        <thead><tr><th>NETCONF</th><th>RESTCONF</th><th>Means</th></tr></thead>
+        <tbody>
+          <tr><td><code>merge</code></td><td><span class="tag tag-write">PATCH</span></td><td>Merge into the resource</td></tr>
+          <tr><td><code>replace</code></td><td><span class="tag tag-write">PUT</span></td><td>Create or replace it</td></tr>
+          <tr><td><code>create</code></td><td><span class="tag tag-write">POST</span></td><td>Create a child</td></tr>
+          <tr><td><code>delete</code> / <code>remove</code></td><td><span class="tag tag-del">DELETE</span></td><td>Remove it</td></tr>
+        </tbody>
+      </table></div>
+      <pre>PATCH /restconf/data/ietf-interfaces:interfaces/interface=GigabitEthernet1/description
+Content-Type: application/yang-data+json
+
+{
+  "<b>ietf-interfaces:description</b>": "uplink"
+}</pre>
+
+      <div class="warn-box">
+        <p><b>There is no candidate datastore.</b> RFC 8040 has no staging area
+        and no commit — a write lands immediately on the running configuration.
+        If you want to stage a change, validate it, and apply it as one
+        transaction, that is <a href="/netconf#writing">NETCONF</a>.</p>
+      </div>
+
+      <h2 id="checking">Checking a device supports it</h2>
+      <p>RESTCONF has no handshake, so without asking you only find out when a
+      request fails. <b>Check RESTCONF</b> on the Devices page reports the root
+      and the optional capabilities that decide what a request can express —
+      <code>fields</code> is the one that makes the folding above legal.</p>
+
+      <h2 id="differences">Where the two differ</h2>
+      <div class="scroll"><table>
+        <thead><tr><th></th><th>NETCONF</th><th>RESTCONF</th></tr></thead>
+        <tbody>
+          <tr><td>Transport</td><td>SSH, port 830</td><td>HTTPS, port 443</td></tr>
+          <tr><td>Encoding</td><td>XML</td><td>JSON or XML</td></tr>
+          <tr><td>Per request</td><td>Several branches in one filter</td><td>One resource</td></tr>
+          <tr><td>Staging</td><td>candidate + commit</td><td>None — writes are immediate</td></tr>
+          <tr><td>Transactions</td><td>Yes, with confirmed-commit</td><td>No</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+
+    <footer class="site">
+      <span>Apache 2.0</span>
+      <a href="https://github.com/Karmatek-Consulting-LLC/yangstudio">Source</a>
+      <a href="https://github.com/Karmatek-Consulting-LLC/yangstudio/pkgs/container/yangstudio">Container image</a>
+      <span>Examples captured from a Cisco IOS-XE device.</span>
+    </footer>
+  </main>
+</div>
+
+</body>
+</html>

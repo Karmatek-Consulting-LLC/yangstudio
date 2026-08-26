@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HTTP API · YANG Studio</title>
+<meta name="description" content="Every endpoint, generated from the running service's OpenAPI schema.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌲</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M13 15h4"/></svg> YANG Studio</a>
+  <nav>
+    <a href="/getting-started">Get started</a>
+    <a href="/concepts">Concepts</a>
+    <a href="/deploy">Deploy</a>
+    <a class="gh" href="https://github.com/Karmatek-Consulting-LLC/yangstudio"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.721.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> GitHub</a>
+  </nav>
+</header>
+
+<div class="shell">
+  <aside class="sidenav">
+      <h4>Start</h4>
+      <a href="/">Overview</a>
+      <a href="/getting-started">Getting started</a>
+      <a href="/concepts">YANG concepts</a>
+      <h4>Protocols</h4>
+      <a href="/netconf">NETCONF</a>
+      <a href="/restconf">RESTCONF</a>
+      <h4>Operate</h4>
+      <a href="/deploy">Deploying</a>
+      <a href="/api" aria-current="page">HTTP API</a>
+  </aside>
+  <main>
+
+    <div class="prose">
+      <h1>HTTP API</h1>
+      <p class="lede">40 endpoints. Everything the UI does goes through
+      these, so anything you can do in the browser you can script.</p>
+
+      <div class="note">
+        <p>The running service publishes an interactive schema at
+        <code>/docs</code> and the raw document at <code>/openapi.json</code>.
+        This page is generated from that schema, so it cannot drift.</p>
+      </div>
+
+      <h2 id="example">Example</h2>
+      <p>Building a request without sending it — useful for seeing what a
+      selection becomes:</p>
+      <pre>curl -s localhost:8420/api/rpc/build \
+  -H 'content-type: application/json' \
+  -d '{
+    "operation": "get-config",
+    "datastore": "running",
+    "namespaces": {"if": "urn:ietf:params:xml:ns:yang:ietf-interfaces"},
+    "selections": [{"xpath": "/if:interfaces/if:interface/if:description"}]
+  }'</pre>
+
+      <h2 id="health">health</h2>
+      <div class="scroll"><table><tbody>
+        <tr><td style="white-space:nowrap"><span class="tag tag-get">GET</span></td><td style="white-space:nowrap"><code>/api/health</code></td><td>Health</td></tr>
+      </table></div>
+      <h2 id="repositories">repositories</h2>
+      <div class="scroll"><table><tbody>
+        <tr><td style="white-space:nowrap"><span class="tag tag-get">GET</span></td><td style="white-space:nowrap"><code>/api/repositories</code></td><td>List Repositories</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-write">POST</span></td><td style="white-space:nowrap"><code>/api/repositories</code></td><td>Create Repository</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-del">DELETE</span></td><td style="white-space:nowrap"><code>/api/repositories/{slug}</code></td><td>Delete Repository</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-get">GET</span></td><td style="white-space:nowrap"><code>/api/repositories/{slug}</code></td><td>Get Repository</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-write">POST</span></td><td style="white-space:nowrap"><code>/api/repositories/{slug}/import-git</code></td><td>Clone a git repo and copy its ``.yang`` files into this repository.</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-write">POST</span></td><td style="white-space:nowrap"><code>/api/repositories/{slug}/remove-modules</code></td><td>Remove Modules</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-write">POST</span></td><td style="white-space:nowrap"><code>/api/repositories/{slug}/upload</code></td><td>Upload To Repository</td></tr>
+      </table></div>
+      <h2 id="yangsets">yangsets</h2>
+      <div class="scroll"><table><tbody>
+        <tr><td style="white-space:nowrap"><span class="tag tag-get">GET</span></td><td style="white-space:nowrap"><code>/api/yangsets</code></td><td>List Yangsets</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-write">POST</span></td><td style="white-space:nowrap"><code>/api/yangsets</code></td><td>Create Yangset</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-write">POST</span></td><td style="white-space:nowrap"><code>/api/yangsets/from-device</code></td><td>Build a set from a device's advertised capabilities.</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-write">POST</span></td><td style="white-space:nowrap"><code>/api/yangsets/from-modules</code></td><td>Turn an explicit module list into a set — e.g. a finished download.</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-del">DELETE</span></td><td style="white-space:nowrap"><code>/api/yangsets/{slug}</code></td><td>Delete Yangset</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-get">GET</span></td><td style="white-space:nowrap"><code>/api/yangsets/{slug}</code></td><td>Get Yangset</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-write">PATCH</span></td><td style="white-space:nowrap"><code>/api/yangsets/{slug}</code></td><td>Update Yangset</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-write">POST</span></td><td style="white-space:nowrap"><code>/api/yangsets/{slug}/resolve-dependencies</code></td><td>Resolve Dependencies</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-get">GET</span></td><td style="white-space:nowrap"><code>/api/yangsets/{slug}/validate</code></td><td>Validate Yangset</td></tr>
+      </table></div>
+      <h2 id="explore">explore</h2>
+      <div class="scroll"><table><tbody>
+        <tr><td style="white-space:nowrap"><span class="tag tag-get">GET</span></td><td style="white-space:nowrap"><code>/api/explore/{slug}/node</code></td><td>Get Node</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-get">GET</span></td><td style="white-space:nowrap"><code>/api/explore/{slug}/search</code></td><td>Search Tree</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-get">GET</span></td><td style="white-space:nowrap"><code>/api/explore/{slug}/tree</code></td><td>Get Tree</td></tr>
+      </table></div>
+      <h2 id="devices">devices</h2>
+      <div class="scroll"><table><tbody>
+        <tr><td style="white-space:nowrap"><span class="tag tag-get">GET</span></td><td style="white-space:nowrap"><code>/api/devices</code></td><td>List Devices</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-write">POST</span></td><td style="white-space:nowrap"><code>/api/devices</code></td><td>Create Device</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-del">DELETE</span></td><td style="white-space:nowrap"><code>/api/devices/{slug}</code></td><td>Delete Device</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-get">GET</span></td><td style="white-space:nowrap"><code>/api/devices/{slug}</code></td><td>Get Device</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-write">PATCH</span></td><td style="white-space:nowrap"><code>/api/devices/{slug}</code></td><td>Update Device</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-get">GET</span></td><td style="white-space:nowrap"><code>/api/devices/{slug}/protocols</code></td><td>Device Protocols</td></tr>
+      </table></div>
+      <h2 id="netconf">netconf</h2>
+      <div class="scroll"><table><tbody>
+        <tr><td style="white-space:nowrap"><span class="tag tag-get">GET</span></td><td style="white-space:nowrap"><code>/api/netconf/{slug}/capabilities</code></td><td>Netconf Capabilities</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-get">GET</span></td><td style="white-space:nowrap"><code>/api/netconf/{slug}/datastores</code></td><td>Netconf Datastores</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-write">POST</span></td><td style="white-space:nowrap"><code>/api/netconf/{slug}/disconnect</code></td><td>Netconf Disconnect</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-write">POST</span></td><td style="white-space:nowrap"><code>/api/netconf/{slug}/download-schemas</code></td><td>Start a background download. Returns immediately with a job to poll.</td></tr>
+      </table></div>
+      <h2 id="restconf">restconf</h2>
+      <div class="scroll"><table><tbody>
+        <tr><td style="white-space:nowrap"><span class="tag tag-write">POST</span></td><td style="white-space:nowrap"><code>/api/restconf/build</code></td><td>Resolve selections into RESTCONF calls, without sending anything.</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-write">POST</span></td><td style="white-space:nowrap"><code>/api/restconf/run</code></td><td>Build and execute. Several selections can mean several calls.</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-get">GET</span></td><td style="white-space:nowrap"><code>/api/restconf/{slug}/probe</code></td><td>Check RESTCONF is reachable on a device and report its root.</td></tr>
+      </table></div>
+      <h2 id="rpc">rpc</h2>
+      <div class="scroll"><table><tbody>
+        <tr><td style="white-space:nowrap"><span class="tag tag-write">POST</span></td><td style="white-space:nowrap"><code>/api/rpc/build</code></td><td>Build Rpc</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-write">POST</span></td><td style="white-space:nowrap"><code>/api/rpc/run</code></td><td>Run Rpc</td></tr>
+      </table></div>
+      <h2 id="jobs">jobs</h2>
+      <div class="scroll"><table><tbody>
+        <tr><td style="white-space:nowrap"><span class="tag tag-del">DELETE</span></td><td style="white-space:nowrap"><code>/api/jobs</code></td><td>Clear Finished Jobs</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-get">GET</span></td><td style="white-space:nowrap"><code>/api/jobs</code></td><td>List Jobs</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-get">GET</span></td><td style="white-space:nowrap"><code>/api/jobs/{job_id}</code></td><td>Get Job</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-write">POST</span></td><td style="white-space:nowrap"><code>/api/jobs/{job_id}/cancel</code></td><td>Ask a job to stop. It halts at its next checkpoint, not instantly.</td></tr>
+      </table></div>
+      <h2 id="{full_path}">{full_path}</h2>
+      <div class="scroll"><table><tbody>
+        <tr><td style="white-space:nowrap"><span class="tag tag-get">GET</span></td><td style="white-space:nowrap"><code>/{full_path}</code></td><td>Hand every non-API path to the SPA router.</td></tr>
+      </table></div>
+    </div>
+
+    <footer class="site">
+      <span>Apache 2.0</span>
+      <a href="https://github.com/Karmatek-Consulting-LLC/yangstudio">Source</a>
+      <a href="https://github.com/Karmatek-Consulting-LLC/yangstudio/pkgs/container/yangstudio">Container image</a>
+      <span>Examples captured from a Cisco IOS-XE device.</span>
+    </footer>
+  </main>
+</div>
+
+</body>
+</html>

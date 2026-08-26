@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YANG Studio</title>
+<meta name="description" content="Browse the YANG models a device implements, then build and run NETCONF or RESTCONF requests against it from the same tree.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌲</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M13 15h4"/></svg> YANG Studio</a>
+  <nav>
+    <a href="/getting-started">Get started</a>
+    <a href="/concepts">Concepts</a>
+    <a href="/deploy">Deploy</a>
+    <a class="gh" href="https://github.com/Karmatek-Consulting-LLC/yangstudio"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.721.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> GitHub</a>
+  </nav>
+</header>
+
+<div class="shell">
+  <aside class="sidenav">
+      <h4>Start</h4>
+      <a href="/" aria-current="page">Overview</a>
+      <a href="/getting-started">Getting started</a>
+      <a href="/concepts">YANG concepts</a>
+      <h4>Protocols</h4>
+      <a href="/netconf">NETCONF</a>
+      <a href="/restconf">RESTCONF</a>
+      <h4>Operate</h4>
+      <a href="/deploy">Deploying</a>
+      <a href="/api">HTTP API</a>
+  </aside>
+  <main>
+
+    <div class="prose">
+      <h1>Browse a device's YANG models, then drive it</h1>
+      <p class="lede">Connect over NETCONF, download the schemas the device
+      advertises, explore them as a tree, and build requests from that tree —
+      as NETCONF XML or RESTCONF URLs, run against the live device.</p>
+
+      <pre><b>docker run</b> -p 8420:8420 -v yangstudio-data:/data \
+  ghcr.io/karmatek-consulting-llc/yangstudio:latest</pre>
+      <p>Then open <a href="http://localhost:8420">localhost:8420</a>.</p>
+    </div>
+
+    <figure class="wide"><img src="/img/explore-tree.png" alt="The schema tree for a set of 13 modules — 199 nodes, parsed in under half a second." loading="lazy" width="3200" height="1826"><figcaption>The schema tree for a set of 13 modules — 199 nodes, parsed in under half a second.</figcaption></figure>
+
+    <div class="prose">
+      <h2 id="what">What it does</h2>
+
+      <h3>Reads schemas off the device</h3>
+      <p>A NETCONF session tells you every module the device implements, with
+      the revision, the optional features it turned on, and the vendor
+      deviations it applies. Download the ones you want — in the background,
+      with progress you can walk away from.</p>
+
+      <h3>Parses them into something you can navigate</h3>
+      <p>The tree is virtualised, so a set with a hundred thousand nodes scrolls
+      at full speed. Filtering is live, and matches keep their ancestors so you
+      can see where a result sits rather than getting a flat list of names.</p>
+
+      <h3>Tells you what a node actually is</h3>
+      <p>Type and the typedef chain beneath it, range and pattern constraints,
+      allowed values, both paths, and whether it is
+      <span class="tag tag-config">config</span> you can write or
+      <span class="tag tag-state">state</span> the device reports.</p>
+
+      <h3>Builds requests from the tree</h3>
+      <p>Tick nodes and the request is written as you go — NETCONF XML, or the
+      RESTCONF method, URL and JSON body. Run either against a device and read
+      the reply formatted and highlighted.</p>
+
+      <h2 id="themes">Light and dark</h2>
+      <p>The interface follows your system theme, and can be switched from the
+      top bar.</p>
+    </div>
+
+    <figure class="wide"><img src="/img/explore-light.png" alt="The same view in the light theme." loading="lazy" width="3200" height="1826"><figcaption>The same view in the light theme.</figcaption></figure>
+
+    <div class="prose">
+      <h2 id="next">Where to go next</h2>
+      <div class="cards">
+        <a class="card" href="/getting-started">
+          <h3>Getting started →</h3>
+          <p>From an empty install to a request running against your device.</p>
+        </a>
+        <a class="card" href="/concepts">
+          <h3>YANG concepts →</h3>
+          <p>What a capability string is, what you download, and why a
+          repository and a set are different things.</p>
+        </a>
+        <a class="card" href="/netconf">
+          <h3>NETCONF →</h3>
+          <p>Filters, datastores, and why a write may need a commit.</p>
+        </a>
+        <a class="card" href="/restconf">
+          <h3>RESTCONF →</h3>
+          <p>The same tree over HTTP, and where the two protocols differ.</p>
+        </a>
+      </div>
+    </div>
+
+    <footer class="site">
+      <span>Apache 2.0</span>
+      <a href="https://github.com/Karmatek-Consulting-LLC/yangstudio">Source</a>
+      <a href="https://github.com/Karmatek-Consulting-LLC/yangstudio/pkgs/container/yangstudio">Container image</a>
+      <span>Examples captured from a Cisco IOS-XE device.</span>
+    </footer>
+  </main>
+</div>
+
+</body>
+</html>
