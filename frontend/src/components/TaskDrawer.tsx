@@ -12,10 +12,10 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-import { MissingImports, missingImports } from './MissingImports'
+import { SetCreated } from './SetCreated'
 import { Badge, Button } from './ui'
 import { api, ApiError } from '@/lib/api'
-import { isJobActive, type Job, type SetCreated } from '@/lib/types'
+import { isJobActive, type Job, type SetCreated as SetCreatedResult } from '@/lib/types'
 
 const OPEN_KEY = 'yangstudio.tasks.open'
 
@@ -260,7 +260,7 @@ function SetHandoff({
   onOpenSet?: (slug: string) => void
 }) {
   const qc = useQueryClient()
-  const [result, setResult] = useState<SetCreated | null>(null)
+  const [result, setResult] = useState<SetCreatedResult | null>(null)
   const [error, setError] = useState('')
 
   const create = useMutation({
@@ -282,34 +282,15 @@ function SetHandoff({
     onError: (e: unknown) => setError(e instanceof ApiError ? e.message : String(e)),
   })
 
-  const missing = result ? missingImports(result.validation) : []
 
   if (result) {
     return (
-      <div className="mt-1.5 rounded border border-line bg-raised/50 p-2">
-        <p className="flex items-center gap-1.5 text-[11px]">
-          <Layers className="size-3 shrink-0 text-brand" />
-          <span className="text-ink">
-            Set “{result.name}” · {result.module_count} modules
-            {result.dependencies_added
-              ? ` (${result.dependencies_added} pulled in)`
-              : ''}
-          </span>
-          <span className="flex-1" />
-          {onOpenSet ? (
-            <Button size="sm" variant="primary" onClick={() => onOpenSet(result.slug)}>
-              Explore
-            </Button>
-          ) : null}
-        </p>
-        {missing.length ? (
-          <MissingImports
-            validation={result.validation}
-            repository={repository}
-            deviceSlug={deviceSlug}
-          />
-        ) : null}
-      </div>
+      <SetCreated
+        created={result}
+        repository={repository}
+        deviceSlug={deviceSlug}
+        onOpenSet={onOpenSet}
+      />
     )
   }
 

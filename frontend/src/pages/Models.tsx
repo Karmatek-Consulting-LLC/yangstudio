@@ -16,6 +16,10 @@ export function Models({ onExplore }: { onExplore: (slug: string) => void }) {
   const [repoSlug, setRepoSlug] = useState('')
   const [moduleFilter, setModuleFilter] = useState('')
   const [picked, setPicked] = useState<Set<string>>(new Set())
+  // Sets created from a device get a generic name; renaming is the first thing
+  // most people want to do with one.
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [draftName, setDraftName] = useState('')
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -87,6 +91,20 @@ export function Models({ onExplore }: { onExplore: (slug: string) => void }) {
       )
     },
     onError: fail,
+  })
+
+  const renameSet = useMutation({
+    mutationFn: (vars: { slug: string; name: string }) =>
+      api.updateYangSet(vars.slug, { name: vars.name }),
+    onSuccess: (updated) => {
+      qc.invalidateQueries({ queryKey: ['yangsets'] })
+      setRenaming(null)
+      notify('ok', `Renamed to “${updated.name}”`)
+    },
+    onError: (error) => {
+      setRenaming(null)
+      fail(error)
+    },
   })
 
   const deleteSet = useMutation({
@@ -326,7 +344,32 @@ export function Models({ onExplore }: { onExplore: (slug: string) => void }) {
               >
                 <div className="flex items-center gap-1.5">
                   <Layers className="size-3.5 shrink-0 text-ink-faint" />
-                  <span className="min-w-0 flex-1 truncate text-sm text-ink">{ys.name}</span>
+                  {renaming === ys.slug ? (
+                    <Input
+                      autoFocus
+                      value={draftName}
+                      onChange={(e) => setDraftName(e.target.value)}
+                      onBlur={() => setRenaming(null)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && draftName.trim()) {
+                          renameSet.mutate({ slug: ys.slug, name: draftName.trim() })
+                        }
+                        if (e.key === 'Escape') setRenaming(null)
+                      }}
+                      className="h-6 flex-1 px-1.5 text-sm"
+                    />
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setRenaming(ys.slug)
+                        setDraftName(ys.name)
+                      }}
+                      title="Rename this set"
+                      className="min-w-0 flex-1 truncate text-left text-sm text-ink hover:text-brand"
+                    >
+                      {ys.name}
+                    </button>
+                  )}
                   <Badge>{ys.module_count}</Badge>
                 </div>
                 <p className="mt-0.5 truncate text-[11px] text-ink-faint">from {ys.repository}</p>
