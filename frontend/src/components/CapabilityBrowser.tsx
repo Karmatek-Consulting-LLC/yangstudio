@@ -10,12 +10,12 @@ import clsx from 'clsx'
 import { AlertTriangle, CheckCircle2, Download, Layers, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import { MissingImports } from './MissingImports'
+import { SetCreated } from './SetCreated'
 import { RestconfProbe } from './RestconfProbe'
 import { Badge, Button, EmptyState, Input, Spinner } from './ui'
 import { api, ApiError } from '@/lib/api'
 import { FAMILY_LABELS, familyCounts, moduleFamily, type FamilyId } from '@/lib/moduleFamily'
-import type { Capabilities, SetCreated } from '@/lib/types'
+import type { Capabilities, SetCreated as SetCreatedResult } from '@/lib/types'
 
 /** Sentinel value for the picker's "create one" option. */
 const NEW_REPOSITORY = '__new__'
@@ -34,7 +34,7 @@ export function CapabilityBrowser({
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [repository, setRepository] = useState('')
   const [started, setStarted] = useState('')
-  const [madeSet, setMadeSet] = useState<SetCreated | null>(null)
+  const [madeSet, setMadeSet] = useState<SetCreatedResult | null>(null)
   const [error, setError] = useState('')
   const [creatingRepo, setCreatingRepo] = useState(false)
   const [newRepoName, setNewRepoName] = useState('')
@@ -386,37 +386,12 @@ export function CapabilityBrowser({
         ) : null}
 
         {madeSet ? (
-          <div className="mt-1.5 rounded border border-line bg-raised/50 p-2">
-            <p className="flex items-center gap-1.5 text-[11px]">
-              <Layers className="size-3 shrink-0 text-brand" />
-              <span className="text-ink">
-                Set “{madeSet.name}” · {madeSet.module_count} modules
-                {madeSet.dependencies_added
-                  ? ` (${madeSet.dependencies_added} pulled in)`
-                  : ''}
-              </span>
-              <span className="flex-1" />
-              {onOpenSet ? (
-                <Button size="sm" variant="primary" onClick={() => onOpenSet(madeSet.slug)}>
-                  Explore
-                </Button>
-              ) : null}
-            </p>
-            {madeSet.not_in_repository?.length ? (
-              <p className="mt-1 text-[10.5px] text-warn">
-                {madeSet.not_in_repository.length} advertised module
-                {madeSet.not_in_repository.length === 1 ? '' : 's'} not downloaded yet, so
-                left out.
-              </p>
-            ) : null}
-            {!madeSet.validation.ok ? (
-              <MissingImports
-                validation={madeSet.validation}
-                repository={repository}
-                deviceSlug={deviceSlug}
-              />
-            ) : null}
-          </div>
+          <SetCreated
+            created={madeSet}
+            repository={repository}
+            deviceSlug={deviceSlug}
+            onOpenSet={onOpenSet}
+          />
         ) : null}
 
         {started ? (

@@ -242,3 +242,45 @@ def test_git_import_keeps_one_file_per_name_and_revision(client, tmp_path, monke
         "demo@2024-01-01.yang",
         "other@2024-02-02.yang",
     ]
+
+
+def test_renaming_a_set_keeps_its_slug_and_contents(client, repo_with_modules):
+    """A set built from a device is named after it, and people rename those.
+
+    The slug is the on-disk identity and anything already referencing the set
+    uses it, so a rename changes the label only.
+    """
+    repo, _ = repo_with_modules
+    created = client.post(
+        "/api/yangsets/from-modules",
+        json={"name": "r1 advertised", "repository": repo.slug, "modules": ["test-base"]},
+    ).json()
+    slug = created["slug"]
+
+    renamed = client.patch(f"/api/yangsets/{slug}", json={"name": "Interface config"}).json()
+    assert renamed["name"] == "Interface config"
+    assert renamed["slug"] == slug
+
+    fetched = client.get(f"/api/yangsets/{slug}").json()
+    assert fetched["name"] == "Interface config"
+    assert len(fetched["modules"]) == created["module_count"]
+
+    listed = {y["slug"]: y["name"] for y in client.get("/api/yangsets").json()}
+    assert listed[slug] == "Interface config"
+
+
+def test_renaming_does_not_disturb_recorded_features(client, repo_with_modules):
+    """Features are what make a device-derived set worth having."""
+    repo, _ = repo_with_modules
+    from yangstudio.core.storage import YangSet
+
+    yangset = YangSet.create(
+        "featured",
+        repo.slug,
+        [{"name": "test-base", "revision": "2024-01-01", "features": ["tcp"]}],
+    )
+    client.patch(f"/api/yangsets/{yangset.slug}", json={"name": "Renamed"})
+
+    reloaded = YangSet.load(yangset.slug)
+    assert reloaded.name == "Renamed"
+    assert reloaded.feature_map() == {"test-base": ["tcp"]}
