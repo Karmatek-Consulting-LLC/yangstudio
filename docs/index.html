@@ -47,9 +47,14 @@
       request from the tree and send it to the device without leaving the
       page.</p>
 
-      <pre><b>docker run</b> -p 8420:8420 -v yangstudio-data:/data \
+      <pre><b>docker run</b> --rm --name yangstudio \
+  -p 8420:8420 \
+  -v yangstudio-data:/data \
   ghcr.io/karmatek-consulting-llc/yangstudio:latest</pre>
-      <p>Then open <a href="http://localhost:8420">localhost:8420</a>.</p>
+      <p>Then open <a href="http://localhost:8420">localhost:8420</a>. Press
+      <kbd>Ctrl-C</kbd> to stop it. The <code>--rm</code> flag tidies the
+      container away afterwards but leaves the <code>yangstudio-data</code>
+      volume alone, so everything you downloaded is still there next time.</p>
     </div>
 
     <figure class="wide"><img src="/img/explore-tree.png" alt="The schema tree for a set of 13 modules — 199 nodes, parsed in under half a second." loading="lazy" width="3200" height="1826"><figcaption>The schema tree for a set of 13 modules — 199 nodes, parsed in under half a second.</figcaption></figure>

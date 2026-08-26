@@ -18,7 +18,8 @@ Browse the YANG models a network device implements, then build and run NETCONF
 or RESTCONF requests against it — from the same tree, in the same session.
 
 ```bash
-docker run -p 8420:8420 -v yangstudio-data:/data ghcr.io/karmatek-consulting-llc/yangstudio:latest
+docker run --rm --name yangstudio -p 8420:8420 -v yangstudio-data:/data \
+  ghcr.io/karmatek-consulting-llc/yangstudio:latest
 ```
 
 Then open <http://localhost:8420>.
@@ -43,14 +44,28 @@ Then open <http://localhost:8420>.
 
 ### Docker
 
+To try it out, in the foreground — `Ctrl-C` stops it, and `--rm` clears the
+container away without touching the volume:
+
 ```bash
-docker run -d --name yangstudio \
+docker run --rm --name yangstudio \
   -p 8420:8420 \
   -v yangstudio-data:/data \
   ghcr.io/karmatek-consulting-llc/yangstudio:latest
 ```
 
-The image runs as a non-root user and serves the API and UI from one process.
+To leave it running, detached and surviving reboots:
+
+```bash
+docker run -d --name yangstudio \
+  --restart unless-stopped \
+  -p 8420:8420 \
+  -v yangstudio-data:/data \
+  ghcr.io/karmatek-consulting-llc/yangstudio:latest
+```
+
+Docker rejects `--rm` together with `--restart`, so pick whichever fits. The
+image runs as a non-root user and serves the API and UI from one process.
 
 ### Docker Compose
 
