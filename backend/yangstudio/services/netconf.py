@@ -101,8 +101,26 @@ def _connect(device: Device):
         ) from exc
     except SSHError as exc:
         raise NetconfError(f"cannot reach {cfg.address}:{cfg.port}: {exc}") from exc
+    except EOFError as exc:
+        # The transport closed mid-handshake with nothing to say — a bare
+        # EOFError, no message. The port is open and something is listening,
+        # but it refused to go further. A RESTCONF-only account on a sandbox
+        # behaves exactly like this.
+        raise NetconfError(
+            f"{cfg.address}:{cfg.port} closed the connection during the SSH "
+            f"handshake, without saying why.\n\n"
+            f"The port is open, so something is listening, but the session was "
+            f"refused before NETCONF began. Usually the account cannot log in "
+            f"over SSH at all — sandbox credentials are often issued for "
+            f"RESTCONF only — or the port forwards somewhere that is not a "
+            f"NETCONF server. Check that {cfg.username!r} can SSH to the "
+            f"device, and try RESTCONF if it cannot."
+        ) from exc
     except Exception as exc:                       # ncclient raises broadly
-        raise NetconfError(f"connection to {device.name} failed: {exc}") from exc
+        # Some of these arrive with an empty str(), which would otherwise end
+        # the sentence on a colon and tell the reader nothing.
+        detail = str(exc) or type(exc).__name__
+        raise NetconfError(f"connection to {device.name} failed: {detail}") from exc
 
 
 def get_session(device: Device, reuse: bool = True):
