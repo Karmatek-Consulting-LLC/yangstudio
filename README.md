@@ -26,9 +26,12 @@ Then open <http://localhost:8420>.
 
 ## What it does
 
-- **Reads schemas off the device.** Connect over NETCONF and it lists every
-  module the box advertises — revisions, features, deviations — then downloads
-  the ones you pick, in the background, with progress you can walk away from.
+- **Reads schemas off the device, over either protocol.** Connect and it lists
+  every module the box advertises — revisions, features, deviations — then
+  downloads the ones you pick, in the background, with progress you can walk
+  away from. Discovery works over NETCONF (`<hello>` and `<get-schema>`) or
+  over RESTCONF (the YANG library), so a device that only runs RESTCONF is
+  still fully usable.
 - **Parses them into a browsable tree.** Virtualised, so a set with 100,000
   nodes scrolls at full speed. Filter by name, path, type or description and
   matches keep their ancestors for context.
@@ -167,8 +170,9 @@ which looks like a credential problem and is not. Check with
 Then:
 
 1. **Devices** → add your device → **Connect**.
-2. Pick the modules you want — the family filters cut a 500-module list down
-   fast — choose a repository, and **Download**. It runs in the background.
+2. Choose NETCONF or RESTCONF next to **Connect**, then pick the modules you
+   want — the family filters cut a 500-module list down fast — choose a
+   repository, and **Download**. It runs in the background.
 3. When it finishes, **Create set from these**. Imports are pulled in
    automatically, because a set that cannot resolve its imports will not parse.
 4. **Explore** → pick the set. Click a node to inspect it, <kbd>Space</kbd> to

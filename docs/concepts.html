@@ -86,10 +86,70 @@
         not know what is inside it. Downloading is a separate step.</p>
       </div>
 
+      <h2 id="transport">NETCONF or RESTCONF</h2>
+      <p>The chooser next to Connect decides which protocol is used to find
+      the device's models and fetch them. It is worth understanding what the
+      two actually do differently, because for most devices the answer that
+      comes back is the same either way.</p>
+
+      <p>NETCONF reads the capability list out of the <code>&lt;hello&gt;</code>
+      the device sends when the session opens, and then asks for each module
+      with <code>&lt;get-schema&gt;</code>. RESTCONF reads the same information
+      from the device's YANG library over HTTPS, and downloads each module
+      from the URL the library gives for it. No session is involved.</p>
+
+      <p>Run both against the same router and you can see how closely they
+      agree. These are the real numbers from the IOS-XE device used throughout
+      these pages:</p>
+
+      <div class="scroll"><table>
+        <thead><tr><th></th><th>NETCONF</th><th>RESTCONF</th></tr></thead>
+        <tbody>
+          <tr><td>Modules advertised</td><td>507</td><td>507</td></tr>
+          <tr><td>Revisions that disagree</td><td colspan="2">none</td></tr>
+          <tr><td>Modules carrying deviations</td><td>26</td><td>26, identical</td></tr>
+          <tr><td>Only on this side</td>
+              <td><code>ietf-netconf</code>, <code>ietf-netconf-with-defaults</code></td>
+              <td><code>ietf-restconf</code>, <code>ietf-yang-patch</code></td></tr>
+        </tbody>
+      </table></div>
+
+      <p>The only difference is that each protocol advertises its own
+      modules, which is exactly what you would want. Everything downstream —
+      the repository, the set, the tree — is identical whichever one you
+      picked.</p>
+
+      <h3>When to choose RESTCONF</h3>
+      <ul>
+        <li><b>The device does not run NETCONF.</b> Plenty of lab and sandbox
+          devices enable only RESTCONF, and without this there would be no way
+          to get their models at all.</li>
+        <li><b>You are downloading a lot of modules.</b> A NETCONF download is
+          hundreds of requests down one session, and if that session drops
+          part-way the requests after it fail too. Over RESTCONF each module is
+          an independent request, so one failure says nothing about the next.</li>
+      </ul>
+
+      <h3>When RESTCONF will not work</h3>
+      <p>RESTCONF discovery needs the device to implement
+      <code>ietf-yang-library</code> and to publish a download URL for each
+      module in it. Most modern platforms do both. A device that publishes the
+      library but leaves the URL empty can still list its modules — the count
+      will be right — but the download will report that it has nowhere to
+      fetch them from, and NETCONF is the way to get them.</p>
+
+      <div class="note">
+        <p>There are two versions of the library and devices are split between
+        them, so YANG Studio asks for the newer one (RFC 8525) and falls back
+        to the older (RFC 7895). The badge above the module list tells you
+        which one answered.</p>
+      </div>
+
       <h2 id="download">What you are downloading</h2>
-      <p>When you press Download, YANG Studio sends one
-      <code>&lt;get-schema&gt;</code> request for each module you picked, and
-      the device replies with the module's source text. That text <em>is</em>
+      <p>When you press Download, YANG Studio makes one request per module
+      you picked — a <code>&lt;get-schema&gt;</code> over NETCONF, or a plain
+      GET over RESTCONF — and the device replies with the module's source
+      text. That text <em>is</em>
       the schema. It is meant to be read by people as well as parsers, and
       reading a little of it is the quickest way to get comfortable with
       YANG:</p>

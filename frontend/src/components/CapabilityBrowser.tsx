@@ -14,16 +14,17 @@ import { RestconfProbe } from './RestconfProbe'
 import { Badge, Button, EmptyState, Input, Spinner } from './ui'
 import { api, ApiError } from '@/lib/api'
 import { FAMILY_LABELS, familyCounts, moduleFamily, type FamilyId } from '@/lib/moduleFamily'
-import type { Capabilities } from '@/lib/types'
+import type { Capabilities, Transport } from '@/lib/types'
 
 /** Sentinel value for the picker's "create one" option. */
 const NEW_REPOSITORY = '__new__'
 
 export function CapabilityBrowser({
-  capabilities, deviceSlug, onRepositoriesChanged,
+  capabilities, deviceSlug, transport = 'netconf', onRepositoriesChanged,
 }: {
   capabilities: Capabilities
   deviceSlug: string
+  transport?: Transport
   onRepositoriesChanged: () => void
 }) {
   const [filter, setFilter] = useState('')
@@ -89,7 +90,8 @@ export function CapabilityBrowser({
   }
 
   const download = useMutation({
-    mutationFn: () => api.downloadSchemas(deviceSlug, [...selected], repository),
+    mutationFn: () =>
+      api.downloadSchemas(deviceSlug, [...selected], repository, transport),
     onSuccess: (job) => {
       // The work now lives in the task drawer, so this panel is free again.
       setStarted(job.label)
@@ -105,7 +107,12 @@ export function CapabilityBrowser({
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Session summary */}
       <div className="flex flex-wrap items-center gap-1.5 border-b border-line-soft p-2">
-        <Badge className="border-ok/40 bg-ok/10 text-ok">session {capabilities.session_id}</Badge>
+        {/* NETCONF has a session to name; RESTCONF has the library it read. */}
+        <Badge className="border-ok/40 bg-ok/10 text-ok">
+          {capabilities.session_id !== null
+            ? `session ${capabilities.session_id}`
+            : (capabilities.yang_library ?? 'restconf')}
+        </Badge>
         <Badge>{capabilities.module_count} modules</Badge>
         {capabilities.supports_candidate ? <Badge>candidate</Badge> : null}
         {capabilities.supports_startup ? <Badge>startup</Badge> : null}

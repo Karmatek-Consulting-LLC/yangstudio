@@ -12,11 +12,15 @@ differences shape the code:
 from __future__ import annotations
 
 import json
+import re
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 
 import httpx
 
 from ..core.devices import Device
+from ..core.quickparse import dependencies_of
 from ..core.resturl import (
     FROM_NETCONF,
     METHODS,
@@ -277,8 +281,6 @@ def probe(device: Device, timeout: float = 20.0) -> dict:
             root = "/restconf"
             if well_known.is_success and "restconf" in well_known.text:
                 # <Link rel='restconf' href='/restconf'/>
-                import re
-
                 found = re.search(r"href=['\"]([^'\"]+)['\"]", well_known.text)
                 if found:
                     root = found.group(1)
@@ -306,4 +308,399 @@ def probe(device: Device, timeout: float = 20.0) -> dict:
         "well_known_status": well_known.status_code,
         "capabilities": capabilities,
         "base_url": base_url(device),
+    }
+
+
+# --------------------------------------------------------------------------
+# Discovery
+#
+# The same job the NETCONF service does with <hello> and <get-schema>, done
+# over HTTP. It exists for two reasons. Some devices only speak RESTCONF, and
+# without this there is no way to get their models at all. On devices that
+# speak both it is also the steadier of the two, because every fetch is an
+# independent request — there is no session to drop halfway through five
+# hundred modules.
+# --------------------------------------------------------------------------
+
+# Devices are split between the two versions of the YANG library, and one that
+# answers the newer will often 404 the older, so both are tried in turn.
+LIBRARY_PATHS = (
+    "/data/ietf-yang-library:yang-library",
+    "/data/ietf-yang-library:modules-state",
+)
+
+# Schema resources are YANG source rather than JSON, and some devices are
+# casual about the content type they put on them.
+YANG_ACCEPT = "application/yang, text/plain;q=0.9, */*;q=0.5"
+
+DEFAULT_ROOT = "/restconf"
+
+# A run of failures this long means the device has stopped answering, and
+# working through the rest of the queue would only take longer to say so.
+MAX_CONSECUTIVE_FAILURES = 5
+
+
+@dataclass
+class _RestFailure:
+    """A schema that did not download, and whether retrying could help."""
+
+    message: str
+    retryable: bool
+
+
+def _client(timeout: float) -> httpx.Client:
+    # Lab devices almost always present a self-signed certificate.
+    return httpx.Client(verify=False, timeout=timeout, follow_redirects=True)
+
+
+def _discover_root(client: httpx.Client, device: Device, cfg) -> str:
+    """The RESTCONF root, per RFC 8040 section 3.1.
+
+    It is nearly always ``/restconf``, but the standard says to look it up
+    rather than assume, and some implementations do put it elsewhere.
+    """
+    try:
+        reply = client.get(
+            base_url(device) + "/.well-known/host-meta",
+            auth=(cfg.username, cfg.password),
+            headers={"Accept": "application/xrd+xml"},
+        )
+    except httpx.HTTPError:
+        return DEFAULT_ROOT
+    if reply.is_success and "restconf" in reply.text:
+        found = re.search(r"href=['\"]([^'\"]+)['\"]", reply.text)
+        if found:
+            return found.group(1).rstrip("/") or DEFAULT_ROOT
+    return DEFAULT_ROOT
+
+
+def _text_list(value) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        return [v for v in value if isinstance(v, str)]
+    return []
+
+
+def _names(value) -> list[str]:
+    """A list of names, whichever way the library spells it.
+
+    RFC 7895 makes deviations a list of objects carrying a name and revision;
+    RFC 8525 makes them a leaf-list of bare module names.
+    """
+    out = []
+    for item in value or []:
+        if isinstance(item, str):
+            out.append(item)
+        elif isinstance(item, dict) and item.get("name"):
+            out.append(str(item["name"]))
+    return out
+
+
+def _schema_url(entry: dict) -> str:
+    """Where to download this module's source.
+
+    RFC 7895 calls the leaf ``schema``; RFC 8525 renamed it to ``location``
+    and allows several, in which case any of them will do.
+    """
+    if entry.get("schema"):
+        return str(entry["schema"])
+    for location in _text_list(entry.get("location")):
+        return location
+    return ""
+
+
+def _normalise(entry: dict, conformance: str = "") -> dict:
+    """One library entry, in the shape the NETCONF service already returns."""
+    return {
+        "name": str(entry.get("name", "")),
+        "revision": str(entry.get("revision") or ""),
+        "namespace": str(entry.get("namespace") or ""),
+        "features": _text_list(entry.get("feature")),
+        "deviations": _names(entry.get("deviation")),
+        "schema": _schema_url(entry),
+        "conformance": str(entry.get("conformance-type") or conformance),
+    }
+
+
+def _extract_library(body: dict) -> tuple[list[dict], dict[str, str]]:
+    """Modules and submodule schema URLs, from either library format.
+
+    Submodules are kept apart from the module list because nothing selects one
+    directly, but a module that includes one will not parse without it, so the
+    download still has to be able to find them.
+    """
+    modules: list[dict] = []
+    submodules: dict[str, str] = {}
+    seen: set[tuple[str, str]] = set()
+
+    def take(entries, conformance: str = "") -> None:
+        for entry in entries or []:
+            if not isinstance(entry, dict) or not entry.get("name"):
+                continue
+            row = _normalise(entry, conformance)
+            key = (row["name"], row["revision"])
+            if key in seen:
+                continue
+            seen.add(key)
+            modules.append(row)
+            for sub in entry.get("submodule") or []:
+                if isinstance(sub, dict) and sub.get("name"):
+                    submodules.setdefault(str(sub["name"]), _schema_url(sub))
+
+    library = body.get("ietf-yang-library:yang-library") or body.get("yang-library")
+    if isinstance(library, dict):
+        for module_set in library.get("module-set") or []:
+            if isinstance(module_set, dict):
+                take(module_set.get("module"), "implement")
+                take(module_set.get("import-only-module"), "import")
+
+    state = body.get("ietf-yang-library:modules-state") or body.get("modules-state")
+    if isinstance(state, dict):
+        take(state.get("module"))
+
+    modules.sort(key=lambda m: m["name"])
+    return modules, submodules
+
+
+def _read_library(
+    client: httpx.Client, device: Device, cfg, root: str
+) -> tuple[list[dict], dict[str, str], str]:
+    """Fetch the device's YANG library, trying both versions of it."""
+    trouble = ""
+    for path in LIBRARY_PATHS:
+        try:
+            reply = client.get(
+                f"{base_url(device)}{root}{path}",
+                auth=(cfg.username, cfg.password),
+                headers={"Accept": ACCEPT},
+            )
+        except httpx.HTTPError as exc:
+            raise RestconfError(
+                f"cannot reach RESTCONF on {device.name}: {exc}"
+            ) from exc
+
+        if reply.status_code in (401, 403):
+            raise RestconfError(
+                f"{device.name} rejected the credentials (HTTP "
+                f"{reply.status_code}). Check the username and password, and "
+                f"that the device has 'ip http authentication local' configured."
+            )
+        if not reply.is_success:
+            trouble = f"HTTP {reply.status_code} from {path}"
+            continue
+        try:
+            body = reply.json()
+        except ValueError:
+            trouble = f"{path} did not return JSON"
+            continue
+
+        modules, submodules = _extract_library(body)
+        if modules:
+            return modules, submodules, path.rsplit(":", 1)[-1]
+        trouble = f"{path} returned no modules"
+
+    raise RestconfError(
+        f"{device.name} did not return a YANG library — {trouble}. RESTCONF "
+        f"discovery needs the device to implement ietf-yang-library."
+    )
+
+
+def _restconf_capabilities(
+    client: httpx.Client, device: Device, cfg, root: str
+) -> list[str]:
+    """The device's advertised RESTCONF capabilities, where it publishes them."""
+    try:
+        reply = client.get(
+            f"{base_url(device)}{root}"
+            "/data/ietf-restconf-monitoring:restconf-state/capabilities",
+            auth=(cfg.username, cfg.password),
+            headers={"Accept": ACCEPT},
+        )
+    except httpx.HTTPError:
+        return []
+    if not reply.is_success:
+        return []
+    try:
+        body = reply.json()
+    except ValueError:
+        return []
+    state = body.get("ietf-restconf-monitoring:capabilities", body)
+    if isinstance(state, dict):
+        return _text_list(state.get("capability"))
+    return []
+
+
+def capabilities(device: Device, timeout: float = 60.0) -> dict:
+    """What the device supports, read over RESTCONF.
+
+    The return shape deliberately matches the NETCONF service's, so that
+    everything downstream — the capability browser, the set builder — does not
+    have to care which transport the modules were discovered over.
+    """
+    cfg = device.resolve("restconf")
+    with _client(timeout) as client:
+        root = _discover_root(client, device, cfg)
+        modules, submodules, source = _read_library(client, device, cfg, root)
+        base = _restconf_capabilities(client, device, cfg, root)
+
+    return {
+        "session_id": None,
+        "transport": "restconf",
+        "base_capabilities": base,
+        "modules": modules,
+        "module_count": len(modules),
+        # RESTCONF writes straight to the running datastore (RFC 8040 section
+        # 1.4), so the NETCONF datastore capabilities have no equivalent here.
+        "supports_candidate": False,
+        "supports_startup": False,
+        "supports_validate": False,
+        "supports_netconf_monitoring": False,
+        # Discovery detail, worth having when a device answers but the tree
+        # still comes back empty.
+        "yang_library": source,
+        "restconf_root": root,
+        "submodule_count": len(submodules),
+        "downloadable": sum(1 for m in modules if m["schema"]),
+    }
+
+
+def _rehome(device: Device, url: str) -> str:
+    """Point a schema URL back at the address we actually reached the device on.
+
+    The library fills in the device's own idea of where it lives, which is
+    frequently not an address that works from here — a sandbox behind NAT
+    advertises its inside address, and a device with several interfaces picks
+    whichever one it likes. Only the path is worth keeping.
+    """
+    if url.startswith(("http://", "https://")):
+        parsed = httpx.URL(url)
+        path = parsed.raw_path.decode()
+    else:
+        path = url if url.startswith("/") else "/" + url
+    return base_url(device) + path
+
+
+def _fetch_schema(
+    client: httpx.Client, device: Device, cfg, name: str, index: dict[str, str]
+) -> tuple[str, _RestFailure | None]:
+    """One schema download. Returns (text, failure); exactly one is meaningful."""
+    url = index.get(name)
+    if not url:
+        return "", _RestFailure(
+            f"{name} is not in the device's YANG library", retryable=False
+        )
+
+    try:
+        reply = client.get(
+            _rehome(device, url),
+            auth=(cfg.username, cfg.password),
+            headers={"Accept": YANG_ACCEPT},
+        )
+    except httpx.HTTPError as exc:
+        return "", _RestFailure(f"{type(exc).__name__}: {exc}", retryable=True)
+
+    if reply.status_code >= 500:
+        # The device is struggling rather than refusing; worth another go.
+        return "", _RestFailure(
+            f"HTTP {reply.status_code} fetching {name}", retryable=True
+        )
+    if not reply.is_success:
+        return "", _RestFailure(
+            f"HTTP {reply.status_code} fetching {name}", retryable=False
+        )
+
+    text = reply.text
+    if not text.lstrip().startswith(("module", "submodule")):
+        # Some devices answer 200 with an error document, or with the JSON
+        # representation of the node rather than its source.
+        return "", _RestFailure(
+            f"{name} did not return YANG source", retryable=False
+        )
+    return text, None
+
+
+def download_schemas(
+    device: Device,
+    module_names: list[str],
+    on_progress: Callable[[str, int, int], None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
+    follow_dependencies: bool = True,
+    have: set[str] | None = None,
+) -> dict:
+    """Pull YANG schemas off the device over RESTCONF.
+
+    Same contract as the NETCONF version, including following imports and
+    includes as they are discovered, so the two are interchangeable behind the
+    download job.
+
+    What is different is that there is no session to keep alive. Each schema is
+    an ordinary GET, so a failure is about that one module and the next request
+    is unaffected — the cascade that a dropped NETCONF session causes has no
+    equivalent here.
+    """
+    cfg = device.resolve("restconf")
+    results: dict[str, str] = {}
+    errors: dict[str, str] = {}
+    pulled_in: list[str] = []
+    aborted = ""
+
+    queue = list(dict.fromkeys(module_names))     # de-duplicate, keep order
+    requested = set(queue)
+    # Modules already in the repository do not need fetching again.
+    seen = set(queue) | (have or set())
+    done = 0
+    consecutive_failures = 0
+
+    with _client(60.0) as client:
+        root = _discover_root(client, device, cfg)
+        modules, submodules, _ = _read_library(client, device, cfg, root)
+
+        # One place to look up any name the queue produces, modules and
+        # submodules alike.
+        index = {m["name"]: m["schema"] for m in modules if m["schema"]}
+        for sub_name, sub_url in submodules.items():
+            if sub_url:
+                index.setdefault(sub_name, sub_url)
+
+        while queue:
+            if should_cancel is not None and should_cancel():
+                break
+            name = queue.pop(0)
+            if on_progress is not None:
+                on_progress(name, done, done + len(queue) + 1)
+
+            text, failure = _fetch_schema(client, device, cfg, name, index)
+            done += 1
+
+            if failure is not None:
+                errors[name] = failure.message
+                if failure.retryable:
+                    consecutive_failures += 1
+                    if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                        aborted = (
+                            f"stopped after {consecutive_failures} modules failed "
+                            f"in a row at {name!r} — the device is not answering"
+                        )
+                        break
+                continue
+
+            consecutive_failures = 0
+            results[name] = text
+
+            if follow_dependencies:
+                for dep in dependencies_of(text):
+                    if dep in seen:
+                        continue
+                    seen.add(dep)
+                    queue.append(dep)
+                    if dep not in requested:
+                        pulled_in.append(dep)
+
+    return {
+        "schemas": results,
+        "errors": errors,
+        "aborted": aborted,
+        # Which modules were added because something else imported them.
+        "pulled_in": sorted(pulled_in),
     }

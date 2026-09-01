@@ -1,7 +1,7 @@
 /** Typed wrapper around the HTTP API. */
 import type {
   Capabilities, Device, Job, RepositoryDetail, RepositorySummary, RpcResult,
-  RestRequest, RestRunResult, Selection, SetCreated, TreeResponse,
+  RestRequest, RestRunResult, Selection, SetCreated, Transport, TreeResponse,
   ValidationReport, YangSetDetail, YangSetSummary,
 } from './types'
 
@@ -114,9 +114,10 @@ export const api = {
   /** Build a set from what a device advertises, including its features. */
   createYangSetFromDevice: (
     name: string, repository: string, device: string, modules: string[] = [],
+    transport: Transport = 'netconf',
   ) =>
     request<SetCreated>('/yangsets/from-device', {
-      method: 'POST', ...json({ name, repository, device, modules }),
+      method: 'POST', ...json({ name, repository, device, modules, transport }),
     }),
 
   validateYangSet: (slug: string) =>
@@ -143,19 +144,25 @@ export const api = {
   deleteDevice: (slug: string) =>
     request<void>(`/devices/${encodeURIComponent(slug)}`, { method: 'DELETE' }),
 
+  // -- discovery -----------------------------------------------------------
+  // Either protocol can list a device's modules and fetch their source, and
+  // both answer in the same shape, so the transport is just part of the path.
+  capabilities: (slug: string, transport: Transport = 'netconf') =>
+    request<Capabilities>(`/${transport}/${encodeURIComponent(slug)}/capabilities`),
+  /** Starts a background job and returns it immediately — does not wait. */
+  downloadSchemas: (
+    slug: string, modules: string[], repository = '', transport: Transport = 'netconf',
+  ) =>
+    request<Job>(
+      `/${transport}/${encodeURIComponent(slug)}/download-schemas`,
+      { method: 'POST', ...json({ modules, repository }) },
+    ),
+
   // -- netconf -------------------------------------------------------------
-  capabilities: (slug: string) =>
-    request<Capabilities>(`/netconf/${encodeURIComponent(slug)}/capabilities`),
   datastores: (slug: string) =>
     request<{ datastores: string[] }>(`/netconf/${encodeURIComponent(slug)}/datastores`),
   disconnect: (slug: string) =>
     request<{ closed: boolean }>(`/netconf/${encodeURIComponent(slug)}/disconnect`, { method: 'POST' }),
-  /** Starts a background job and returns it immediately — does not wait. */
-  downloadSchemas: (slug: string, modules: string[], repository = '') =>
-    request<Job>(
-      `/netconf/${encodeURIComponent(slug)}/download-schemas`,
-      { method: 'POST', ...json({ modules, repository }) },
-    ),
 
   // -- restconf ------------------------------------------------------------
   buildRestconf: (body: {

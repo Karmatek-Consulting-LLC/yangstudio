@@ -213,3 +213,18 @@ def parse_file(path: Path) -> ModuleInfo | None:
         info.name = path.stem
         info.errors.append("module name missing from header")
     return info
+
+
+def dependencies_of(text: str) -> list[str]:
+    """Modules this one imports or includes, from its header alone.
+
+    Used to follow a dependency tree while downloading: a module that imports
+    another is useless without it, because the set will not parse.
+    """
+    info = parse_text(text)
+    if info is None:
+        return []
+    deps = list(info.imports) + list(info.includes)
+    if info.belongs_to:
+        deps.append(info.belongs_to)
+    return deps
