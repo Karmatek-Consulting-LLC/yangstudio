@@ -350,3 +350,155 @@ def test_bad_credentials_are_named_as_such(device, monkeypatch):
     monkeypatch.setattr(restconf, "_client", _serve(handler))
     with pytest.raises(restconf.RestconfError, match="rejected the credentials"):
         restconf.capabilities(device)
+
+
+# -- choosing between two libraries -----------------------------------------
+
+# A device can serve both versions and put download locations in only one.
+# Seen on IOS-XE behind a sandbox gateway: the RFC 8525 library lists every
+# module with nothing but a name, namespace and revision.
+BARE_8525 = {
+    "ietf-yang-library:yang-library": {
+        "module-set": [
+            {
+                "name": "common",
+                "module": [
+                    {"name": "ietf-interfaces", "revision": "2014-05-08",
+                     "namespace": "urn:ietf:params:xml:ns:yang:ietf-interfaces"},
+                    {"name": "ietf-yang-types", "revision": "2013-07-15"},
+                ],
+            }
+        ]
+    }
+}
+
+USEFUL_7895 = {
+    "ietf-yang-library:modules-state": {
+        "module": [
+            {"name": "ietf-interfaces", "revision": "2014-05-08",
+             "schema": "https://10.4.19.105:443/restconf/tailf/modules/ietf-interfaces/2014-05-08"},
+            {"name": "ietf-yang-types", "revision": "2013-07-15",
+             "schema": "https://10.4.19.105:443/restconf/tailf/modules/ietf-yang-types/2013-07-15"},
+        ]
+    }
+}
+
+
+def _both_libraries(request):
+    """A device that answers both, only one of them usefully."""
+    if request.url.path.endswith("host-meta"):
+        return httpx.Response(404)
+    if "ietf-yang-library:yang-library" in str(request.url):
+        return httpx.Response(200, json=BARE_8525)
+    if "modules-state" in str(request.url):
+        return httpx.Response(200, json=USEFUL_7895)
+    return None
+
+
+def test_prefers_the_library_it_can_download_from(device, monkeypatch):
+    """Listing modules is no use if there is no way to fetch any of them."""
+    def handler(request):
+        preset = _both_libraries(request)
+        return preset if preset is not None else httpx.Response(404)
+
+    monkeypatch.setattr(restconf, "_client", _serve(handler))
+    caps = restconf.capabilities(device)
+
+    # The newer library answered first, but the older one is the usable one.
+    assert caps["yang_library"] == "modules-state"
+    assert caps["module_count"] == 2
+    assert caps["downloadable"] == 2
+
+
+def test_a_library_without_locations_is_still_better_than_nothing(device, monkeypatch):
+    """If it is all the device has, the module list is worth reporting."""
+    def handler(request):
+        if request.url.path.endswith("host-meta"):
+            return httpx.Response(404)
+        if "ietf-yang-library:yang-library" in str(request.url):
+            return httpx.Response(200, json=BARE_8525)
+        return httpx.Response(404)
+
+    monkeypatch.setattr(restconf, "_client", _serve(handler))
+    caps = restconf.capabilities(device)
+
+    assert caps["module_count"] == 2
+    assert caps["downloadable"] == 0
+
+
+def test_downloading_with_no_locations_anywhere_says_so_once(device, monkeypatch):
+    """One clear refusal, rather than a failure per module."""
+    def handler(request):
+        if request.url.path.endswith("host-meta"):
+            return httpx.Response(404)
+        if "ietf-yang-library:yang-library" in str(request.url):
+            return httpx.Response(200, json=BARE_8525)
+        return httpx.Response(404)
+
+    monkeypatch.setattr(restconf, "_client", _serve(handler))
+    with pytest.raises(restconf.RestconfError, match="no download URL for any"):
+        restconf.download_schemas(device, ["ietf-interfaces"])
+
+
+# -- URLs that are advertised but not served --------------------------------
+
+def test_a_wall_of_404s_stops_quickly_and_explains_itself(device, monkeypatch):
+    """A gateway proxying only /restconf/data 404s every schema URL.
+
+    The module list is correct and every entry carries a URL, so nothing looks
+    wrong until the fetches start. Marching through six hundred of them to
+    collect six hundred 404s helps nobody.
+    """
+    names = [f"m{i}" for i in range(200)]
+    library = {
+        "ietf-yang-library:modules-state": {
+            "module": [
+                {"name": n, "schema": f"https://10.4.19.105:443/restconf/tailf/modules/{n}"}
+                for n in names
+            ]
+        }
+    }
+
+    def handler(request):
+        if request.url.path.endswith("host-meta"):
+            return httpx.Response(404)
+        if "ietf-yang-library:yang-library" in str(request.url):
+            return httpx.Response(404)
+        if "modules-state" in str(request.url):
+            return httpx.Response(200, json=library)
+        return httpx.Response(404)          # every schema URL
+
+    monkeypatch.setattr(restconf, "_client", _serve(handler))
+    result = restconf.download_schemas(device, names)
+
+    assert len(result["errors"]) == restconf.MAX_CONSECUTIVE_FAILURES
+    assert "only proxies /restconf/data" in result["aborted"]
+    assert "NETCONF" in result["aborted"]
+
+
+def test_a_module_listed_without_a_url_is_told_apart_from_an_unknown_one(
+    device, monkeypatch,
+):
+    library = {
+        "ietf-yang-library:modules-state": {
+            "module": [
+                {"name": "listed-only"},
+                {"name": "fetchable", "schema": "/yang/fetchable"},
+            ]
+        }
+    }
+
+    def handler(request):
+        if request.url.path.endswith("host-meta"):
+            return httpx.Response(404)
+        if "ietf-yang-library:yang-library" in str(request.url):
+            return httpx.Response(404)
+        if "modules-state" in str(request.url):
+            return httpx.Response(200, json=library)
+        return httpx.Response(200, text="module fetchable { }")
+
+    monkeypatch.setattr(restconf, "_client", _serve(handler))
+    result = restconf.download_schemas(device, ["listed-only", "never-heard-of"])
+
+    assert "publishes no download URL" in result["errors"]["listed-only"]
+    assert "not in the device's YANG library" in result["errors"]["never-heard-of"]

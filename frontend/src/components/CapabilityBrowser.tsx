@@ -114,6 +114,25 @@ export function CapabilityBrowser({
             : (capabilities.yang_library ?? 'restconf')}
         </Badge>
         <Badge>{capabilities.module_count} modules</Badge>
+        {/* Listing a module and being able to fetch its source are different
+            things: some devices publish a library with no download URLs. Say
+            so here rather than letting the download discover it. */}
+        {capabilities.downloadable !== undefined
+          && capabilities.downloadable < capabilities.module_count ? (
+          <Badge
+            className="border-warn/40 bg-warn/10 text-warn"
+            title={
+              capabilities.downloadable === 0
+                ? 'The device lists these modules but publishes no download '
+                  + 'URL for any of them. Fetch the source over NETCONF, or '
+                  + 'upload the models to a repository yourself.'
+                : 'Some modules have no download URL and cannot be fetched '
+                  + 'over RESTCONF.'
+            }
+          >
+            {capabilities.downloadable} downloadable
+          </Badge>
+        ) : null}
         {capabilities.supports_candidate ? <Badge>candidate</Badge> : null}
         {capabilities.supports_startup ? <Badge>startup</Badge> : null}
         {capabilities.supports_validate ? <Badge>validate</Badge> : null}

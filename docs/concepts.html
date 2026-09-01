@@ -131,19 +131,42 @@
       </ul>
 
       <h3>When RESTCONF will not work</h3>
-      <p>RESTCONF discovery needs the device to implement
-      <code>ietf-yang-library</code> and to publish a download URL for each
-      module in it. Most modern platforms do both. A device that publishes the
-      library but leaves the URL empty can still list its modules — the count
-      will be right — but the download will report that it has nowhere to
-      fetch them from, and NETCONF is the way to get them.</p>
+      <p>RESTCONF discovery needs two things from the device: the
+      <code>ietf-yang-library</code> module, and a download URL for each module
+      listed in it. Most platforms provide both, but listing a module and being
+      able to fetch its source are separate questions, and there are two ways
+      the second one goes wrong.</p>
+
+      <p><b>The library has no download URLs.</b> Some devices publish entries
+      carrying nothing but a name, a namespace and a revision. The module list
+      is still correct and still worth having — it pins revisions, features and
+      deviations — but there is nothing to download from. YANG Studio shows a
+      <span class="tag">downloadable</span> count next to the module count when
+      the two differ, so you know before you start.</p>
+
+      <p><b>The URLs are published but not served.</b> A device behind a
+      gateway often advertises URLs pointing at its own inside address, on a
+      path the gateway does not proxy. Every fetch comes back 404 even though
+      the module list was perfect. YANG Studio stops after a few of those and
+      says what happened rather than working through the whole list.</p>
 
       <div class="note">
         <p>There are two versions of the library and devices are split between
-        them, so YANG Studio asks for the newer one (RFC 8525) and falls back
-        to the older (RFC 7895). The badge above the module list tells you
-        which one answered.</p>
+        them, so both are tried. A device can answer both and put the download
+        URLs in only one, so the choice is made on which library is actually
+        usable rather than which replied first. The badge above the module list
+        tells you which one was used.</p>
       </div>
+
+      <h3>If the source cannot be downloaded at all</h3>
+      <p>You are not stuck. The module list on its own is the valuable half —
+      it tells you exactly which revisions the device implements, which
+      features it has turned on, and which deviations it applies. Get the
+      model files from elsewhere, such as the vendor's public repository, and
+      upload them into a repository. Then build the set from the device as
+      normal: the files come from the repository and the revisions, features
+      and deviations come from the device, so the set is still pinned to that
+      box.</p>
 
       <h2 id="download">What you are downloading</h2>
       <p>When you press Download, YANG Studio makes one request per module

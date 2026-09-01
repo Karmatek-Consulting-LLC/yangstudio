@@ -323,7 +323,9 @@ def probe(device: Device, timeout: float = 20.0) -> dict:
 # --------------------------------------------------------------------------
 
 # Devices are split between the two versions of the YANG library, and one that
-# answers the newer will often 404 the older, so both are tried in turn.
+# answers the newer will often 404 the older, so both are tried in turn. Some
+# devices answer both, which is why _read_library picks by usefulness rather
+# than taking the first that replies.
 LIBRARY_PATHS = (
     "/data/ietf-yang-library:yang-library",
     "/data/ietf-yang-library:modules-state",
@@ -346,6 +348,9 @@ class _RestFailure:
 
     message: str
     retryable: bool
+    # Set when the device answered. A wall of 404s means something different
+    # from a wall of timeouts, and the advice differs with it.
+    status: int | None = None
 
 
 def _client(timeout: float) -> httpx.Client:
@@ -466,7 +471,21 @@ def _extract_library(body: dict) -> tuple[list[dict], dict[str, str]]:
 def _read_library(
     client: httpx.Client, device: Device, cfg, root: str
 ) -> tuple[list[dict], dict[str, str], str]:
-    """Fetch the device's YANG library, trying both versions of it."""
+    """Fetch the device's YANG library, trying both versions of it.
+
+    Answering is not the same as being useful. A device can serve both
+    versions and put download locations in only one of them — IOS-XE behind
+    the sandbox gateways does exactly this, publishing an RFC 8525 library
+    whose entries carry nothing but a name, namespace and revision, while the
+    older RFC 7895 one has a URL for all six hundred modules.
+
+    Taking the first library that returned modules would list everything and
+    then be unable to fetch any of it, so both are read and the one that can
+    be downloaded from wins. A library with no locations is still returned if
+    it is all the device has, because listing the modules is worth something
+    on its own.
+    """
+    listable = None      # modules, but nothing to download them from
     trouble = ""
     for path in LIBRARY_PATHS:
         try:
@@ -496,9 +515,18 @@ def _read_library(
             continue
 
         modules, submodules = _extract_library(body)
-        if modules:
-            return modules, submodules, path.rsplit(":", 1)[-1]
-        trouble = f"{path} returned no modules"
+        if not modules:
+            trouble = f"{path} returned no modules"
+            continue
+
+        source = path.rsplit(":", 1)[-1]
+        if any(module["schema"] for module in modules):
+            return modules, submodules, source
+        if listable is None:
+            listable = (modules, submodules, source)
+
+    if listable is not None:
+        return listable
 
     raise RestconfError(
         f"{device.name} did not return a YANG library — {trouble}. RESTCONF "
@@ -582,11 +610,20 @@ def _rehome(device: Device, url: str) -> str:
 
 
 def _fetch_schema(
-    client: httpx.Client, device: Device, cfg, name: str, index: dict[str, str]
+    client: httpx.Client, device: Device, cfg, name: str,
+    index: dict[str, str], known: set[str],
 ) -> tuple[str, _RestFailure | None]:
     """One schema download. Returns (text, failure); exactly one is meaningful."""
     url = index.get(name)
     if not url:
+        # Being listed and being fetchable are different things, and the
+        # difference decides what the user should do about it.
+        if name in known:
+            return "", _RestFailure(
+                f"the device lists {name} but publishes no download URL for "
+                f"it — NETCONF can still fetch this module",
+                retryable=False,
+            )
         return "", _RestFailure(
             f"{name} is not in the device's YANG library", retryable=False
         )
@@ -603,11 +640,13 @@ def _fetch_schema(
     if reply.status_code >= 500:
         # The device is struggling rather than refusing; worth another go.
         return "", _RestFailure(
-            f"HTTP {reply.status_code} fetching {name}", retryable=True
+            f"HTTP {reply.status_code} fetching {name}",
+            retryable=True, status=reply.status_code,
         )
     if not reply.is_success:
         return "", _RestFailure(
-            f"HTTP {reply.status_code} fetching {name}", retryable=False
+            f"HTTP {reply.status_code} fetching {name}",
+            retryable=False, status=reply.status_code,
         )
 
     text = reply.text
@@ -618,6 +657,25 @@ def _fetch_schema(
             f"{name} did not return YANG source", retryable=False
         )
     return text, None
+
+
+def _why_it_stopped(failures: int, notfound: int, name: str) -> str:
+    """Explain a run of failures in terms of what to do about it."""
+    if notfound == failures:
+        # The library gave us URLs and the device is serving 404 on all of
+        # them. A gateway that proxies only /restconf/data does this: the
+        # module list is correct, but the source behind it is not exposed.
+        return (
+            f"stopped after {failures} modules in a row returned HTTP 404. The "
+            f"device advertises a download URL for each module but is not "
+            f"serving them — a gateway that only proxies /restconf/data will "
+            f"do this. The module list is still good; fetch the source over "
+            f"NETCONF or from an offline copy of the models."
+        )
+    return (
+        f"stopped after {failures} modules failed in a row at {name!r} — the "
+        f"device is not answering"
+    )
 
 
 def download_schemas(
@@ -651,17 +709,28 @@ def download_schemas(
     seen = set(queue) | (have or set())
     done = 0
     consecutive_failures = 0
+    notfound = 0
 
     with _client(60.0) as client:
         root = _discover_root(client, device, cfg)
         modules, submodules, _ = _read_library(client, device, cfg, root)
 
         # One place to look up any name the queue produces, modules and
-        # submodules alike.
+        # submodules alike, plus everything the device mentioned at all so a
+        # module with no download URL can be told apart from one it has never
+        # heard of.
         index = {m["name"]: m["schema"] for m in modules if m["schema"]}
+        known = {m["name"] for m in modules} | set(submodules)
         for sub_name, sub_url in submodules.items():
             if sub_url:
                 index.setdefault(sub_name, sub_url)
+
+        if not index:
+            raise RestconfError(
+                f"{device.name} lists {len(known)} modules but publishes no "
+                f"download URL for any of them, so RESTCONF cannot fetch the "
+                f"source. Download over NETCONF instead."
+            )
 
         while queue:
             if should_cancel is not None and should_cancel():
@@ -670,22 +739,25 @@ def download_schemas(
             if on_progress is not None:
                 on_progress(name, done, done + len(queue) + 1)
 
-            text, failure = _fetch_schema(client, device, cfg, name, index)
+            text, failure = _fetch_schema(
+                client, device, cfg, name, index, known
+            )
             done += 1
 
             if failure is not None:
                 errors[name] = failure.message
-                if failure.retryable:
-                    consecutive_failures += 1
-                    if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-                        aborted = (
-                            f"stopped after {consecutive_failures} modules failed "
-                            f"in a row at {name!r} — the device is not answering"
-                        )
-                        break
+                # Any run this long means the rest of the queue will go the
+                # same way. Counting only the retryable ones would march
+                # through six hundred modules collecting six hundred 404s.
+                consecutive_failures += 1
+                notfound += 1 if failure.status == 404 else 0
+                if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                    aborted = _why_it_stopped(consecutive_failures, notfound, name)
+                    break
                 continue
 
             consecutive_failures = 0
+            notfound = 0
             results[name] = text
 
             if follow_dependencies:
