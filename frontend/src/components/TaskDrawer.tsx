@@ -15,7 +15,9 @@ import { useEffect, useState } from 'react'
 import { SetCreated } from './SetCreated'
 import { Badge, Button } from './ui'
 import { api, ApiError } from '@/lib/api'
-import { isJobActive, type Job, type SetCreated as SetCreatedResult } from '@/lib/types'
+import {
+  isJobActive, type Job, type SetCreated as SetCreatedResult, type Transport,
+} from '@/lib/types'
 
 const OPEN_KEY = 'yangstudio.tasks.open'
 
@@ -209,6 +211,7 @@ function JobRow({
           modules={downloaded}
           repository={repository}
           deviceSlug={(job.result?.device as string | undefined) ?? undefined}
+          transport={(job.result?.transport as Transport | undefined) ?? 'netconf'}
           onOpenSet={onOpenSet}
         />
       ) : null}
@@ -251,12 +254,13 @@ function StatusIcon({ job }: { job: Job }) {
  * missing is a name.
  */
 function SetHandoff({
-  label, modules, repository, deviceSlug, onOpenSet,
+  label, modules, repository, deviceSlug, transport = 'netconf', onOpenSet,
 }: {
   label: string
   modules: string[]
   repository: string
   deviceSlug?: string
+  transport?: Transport
   onOpenSet?: (slug: string) => void
 }) {
   const qc = useQueryClient()
@@ -271,7 +275,9 @@ function SetHandoff({
       // the device declared, which narrow the tree to what the box actually
       // implements. Fall back only if the job did not record a device.
       return deviceSlug
-        ? api.createYangSetFromDevice(source, repository, deviceSlug, modules)
+        ? api.createYangSetFromDevice(
+            source, repository, deviceSlug, modules, transport,
+          )
         : api.createYangSetFromModules(source, repository, modules)
     },
     onSuccess: (created) => {
@@ -289,6 +295,7 @@ function SetHandoff({
         created={result}
         repository={repository}
         deviceSlug={deviceSlug}
+        transport={transport}
         onOpenSet={onOpenSet}
       />
     )

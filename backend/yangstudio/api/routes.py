@@ -328,7 +328,8 @@ def create_yangset_from_device(body: S.YangSetFromDevice) -> dict:
     try:
         device = Device.load(body.device)
         repo = Repository.load(body.repository)
-        advertised = netconf_svc.capabilities(device)["modules"]
+        service = restconf_svc if body.transport == "restconf" else netconf_svc
+        advertised = service.capabilities(device)["modules"]
     except Exception as exc:
         raise _wrap(exc) from exc
 
@@ -543,14 +544,19 @@ def netconf_disconnect(slug: str) -> dict:
     return {"closed": netconf_svc.close_session(slug)}
 
 
-@router.post("/netconf/{slug}/download-schemas", status_code=202)
-def netconf_download_schemas(slug: str, body: S.SchemaDownload) -> dict:
+def _start_schema_download(
+    slug: str, body: S.SchemaDownload, transport: str
+) -> dict:
     """Start a background download. Returns immediately with a job to poll.
 
     Fetching schemas is one round trip per module, so a few hundred modules is
     several minutes. Running it inside the request would tie the work to the
     page that started it.
+
+    The two transports do the same job and return the same shape, so the only
+    thing that changes here is which service is asked.
     """
+    service = restconf_svc if transport == "restconf" else netconf_svc
     try:
         device = Device.load(slug)
         repo = Repository.load(body.repository) if body.repository else None
@@ -572,9 +578,15 @@ def netconf_download_schemas(slug: str, body: S.SchemaDownload) -> dict:
 
     def run(handle) -> dict:
         handle.set_total(len(modules))
-        # Opening (or re-opening) the NETCONF session happens before the first
-        # module and can take seconds; say so rather than sitting at 0%.
-        handle.set_progress(0, f"Connecting to {device.name}\u2026")
+        # Both transports do something slow before the first module — NETCONF
+        # opens a session, RESTCONF reads the YANG library — and it can take
+        # seconds, so say so rather than sitting at 0%.
+        opening = (
+            f"Reading the YANG library from {device.name}\u2026"
+            if transport == "restconf"
+            else f"Connecting to {device.name}\u2026"
+        )
+        handle.set_progress(0, opening)
 
         def progress(name: str, done: int, total: int) -> None:
             # The total grows as imports are discovered, so it is reported
@@ -582,7 +594,7 @@ def netconf_download_schemas(slug: str, body: S.SchemaDownload) -> dict:
             handle.set_total(total)
             handle.set_progress(done, name)
 
-        result = netconf_svc.download_schemas(
+        result = service.download_schemas(
             device,
             modules,
             on_progress=progress,
@@ -620,8 +632,9 @@ def netconf_download_schemas(slug: str, body: S.SchemaDownload) -> dict:
             "saved_to_repository": saved,
             "repository": repo.slug if repo else "",
             # Carried so the UI can offer to fetch anything still missing
-            # without asking which device it came from.
+            # without asking which device it came from, or over which protocol.
             "device": device.slug,
+            "transport": transport,
             "failed": failed,
             "aborted": aborted,
             "message": message,
@@ -629,6 +642,18 @@ def netconf_download_schemas(slug: str, body: S.SchemaDownload) -> dict:
 
     job = registry.submit("download-schemas", label, run)
     return job.dict()
+
+
+@router.post("/netconf/{slug}/download-schemas", status_code=202)
+def netconf_download_schemas(slug: str, body: S.SchemaDownload) -> dict:
+    """Download schemas over NETCONF, using <get-schema>."""
+    return _start_schema_download(slug, body, "netconf")
+
+
+@router.post("/restconf/{slug}/download-schemas", status_code=202)
+def restconf_download_schemas(slug: str, body: S.SchemaDownload) -> dict:
+    """Download schemas over RESTCONF, following the YANG library."""
+    return _start_schema_download(slug, body, "restconf")
 
 
 # --------------------------------------------------------------------------
@@ -744,6 +769,20 @@ async def run_restconf(body: S.RestconfRun) -> dict:
         "ok": all(r["ok"] for r in results),
         "elapsed_ms": sum(r["elapsed_ms"] for r in results),
     }
+
+
+@router.get("/restconf/{slug}/capabilities")
+async def restconf_capabilities(slug: str) -> dict:
+    """List the modules the device publishes in its YANG library.
+
+    The RESTCONF counterpart of reading the NETCONF <hello>. It needs no
+    session, and works on devices that do not speak NETCONF at all.
+    """
+    try:
+        device = Device.load(slug)
+        return await run_in_threadpool(restconf_svc.capabilities, device)
+    except Exception as exc:
+        raise _wrap(exc) from exc
 
 
 @router.get("/restconf/{slug}/probe")

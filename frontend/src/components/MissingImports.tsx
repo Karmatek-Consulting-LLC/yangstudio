@@ -11,7 +11,7 @@ import { useState } from 'react'
 
 import { Button } from './ui'
 import { api, ApiError } from '@/lib/api'
-import type { ValidationReport } from '@/lib/types'
+import type { Transport, ValidationReport } from '@/lib/types'
 
 /** Unique module names the set needs but the repository does not hold. */
 export function missingImports(validation: ValidationReport): string[] {
@@ -19,11 +19,12 @@ export function missingImports(validation: ValidationReport): string[] {
 }
 
 export function MissingImports({
-  validation, repository, deviceSlug,
+  validation, repository, deviceSlug, transport = 'netconf',
 }: {
   validation: ValidationReport
   repository: string
   deviceSlug?: string
+  transport?: Transport
 }) {
   const qc = useQueryClient()
   const [started, setStarted] = useState(false)
@@ -31,7 +32,7 @@ export function MissingImports({
   const missing = missingImports(validation)
 
   const fetchMissing = useMutation({
-    mutationFn: () => api.downloadSchemas(deviceSlug!, missing, repository),
+    mutationFn: () => api.downloadSchemas(deviceSlug!, missing, repository, transport),
     onSuccess: () => {
       setStarted(true)
       setError('')

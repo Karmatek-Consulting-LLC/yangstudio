@@ -41,7 +41,7 @@
 
     <div class="prose">
       <h1>HTTP API</h1>
-      <p class="lede">40 endpoints. Everything the UI does goes through
+      <p class="lede">42 endpoints. Everything the UI does goes through
       these, so anything you can do in the browser you can script.</p>
 
       <div class="note">
@@ -108,12 +108,14 @@
         <tr><td style="white-space:nowrap"><span class="tag tag-get">GET</span></td><td style="white-space:nowrap"><code>/api/netconf/{slug}/capabilities</code></td><td>Netconf Capabilities</td></tr>
         <tr><td style="white-space:nowrap"><span class="tag tag-get">GET</span></td><td style="white-space:nowrap"><code>/api/netconf/{slug}/datastores</code></td><td>Netconf Datastores</td></tr>
         <tr><td style="white-space:nowrap"><span class="tag tag-write">POST</span></td><td style="white-space:nowrap"><code>/api/netconf/{slug}/disconnect</code></td><td>Netconf Disconnect</td></tr>
-        <tr><td style="white-space:nowrap"><span class="tag tag-write">POST</span></td><td style="white-space:nowrap"><code>/api/netconf/{slug}/download-schemas</code></td><td>Start a background download. Returns immediately with a job to poll.</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-write">POST</span></td><td style="white-space:nowrap"><code>/api/netconf/{slug}/download-schemas</code></td><td>Download schemas over NETCONF, using &lt;get-schema>.</td></tr>
       </table></div>
       <h2 id="restconf">restconf</h2>
       <div class="scroll"><table><tbody>
         <tr><td style="white-space:nowrap"><span class="tag tag-write">POST</span></td><td style="white-space:nowrap"><code>/api/restconf/build</code></td><td>Resolve selections into RESTCONF calls, without sending anything.</td></tr>
         <tr><td style="white-space:nowrap"><span class="tag tag-write">POST</span></td><td style="white-space:nowrap"><code>/api/restconf/run</code></td><td>Build and execute. Several selections can mean several calls.</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-get">GET</span></td><td style="white-space:nowrap"><code>/api/restconf/{slug}/capabilities</code></td><td>List the modules the device publishes in its YANG library.</td></tr>
+        <tr><td style="white-space:nowrap"><span class="tag tag-write">POST</span></td><td style="white-space:nowrap"><code>/api/restconf/{slug}/download-schemas</code></td><td>Download schemas over RESTCONF, following the YANG library.</td></tr>
         <tr><td style="white-space:nowrap"><span class="tag tag-get">GET</span></td><td style="white-space:nowrap"><code>/api/restconf/{slug}/probe</code></td><td>Check RESTCONF is reachable on a device and report its root.</td></tr>
       </table></div>
       <h2 id="rpc">rpc</h2>

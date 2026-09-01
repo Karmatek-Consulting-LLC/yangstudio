@@ -175,6 +175,9 @@ export interface Device {
   modified: string
 }
 
+/** Which protocol to discover and download a device's models over. */
+export type Transport = 'netconf' | 'restconf'
+
 export interface Capabilities {
   session_id: number | null
   base_capabilities: string[]
@@ -184,6 +187,12 @@ export interface Capabilities {
   supports_startup: boolean
   supports_validate: boolean
   supports_netconf_monitoring: boolean
+  // Only RESTCONF discovery fills these in.
+  transport?: Transport
+  yang_library?: string
+  restconf_root?: string
+  downloadable?: number
+  submodule_count?: number
 }
 
 /** A node the user has picked, plus the value/operation they gave it. */

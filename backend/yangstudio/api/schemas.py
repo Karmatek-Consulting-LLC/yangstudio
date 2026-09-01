@@ -1,6 +1,8 @@
 """Pydantic request/response models for the HTTP API."""
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -44,6 +46,9 @@ class YangSetFromDevice(BaseModel):
     # the repository actually holds.
     modules: list[str] = Field(default_factory=list)
     include_features: bool = True
+    # Which protocol to ask the device over. A device that only speaks
+    # RESTCONF has no <hello> to read.
+    transport: Literal["netconf", "restconf"] = "netconf"
 
 
 class YangSetFromModules(BaseModel):

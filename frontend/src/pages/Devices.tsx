@@ -8,7 +8,7 @@ import { CapabilityBrowser } from '@/components/CapabilityBrowser'
 import { Split } from '@/components/Split'
 import { Badge, Button, EmptyState, Input, Panel, Spinner } from '@/components/ui'
 import { api, ApiError } from '@/lib/api'
-import type { Capabilities, Device } from '@/lib/types'
+import type { Capabilities, Device, Transport } from '@/lib/types'
 
 const VARIANTS = ['generic', 'iosxe', 'iosxr', 'nxos', 'junos']
 
@@ -16,19 +16,63 @@ const BLANK: Partial<Device> = {
   name: '', address: '', username: '', password: '', description: '', variant: 'generic',
 }
 
+const TRANSPORTS: Transport[] = ['netconf', 'restconf']
+
+/** Why a device would be discovered over one protocol rather than the other. */
+const WHY: Record<Transport, string> = {
+  netconf: 'Read the module list from the NETCONF hello, over SSH on port 830.',
+  restconf: 'Read the module list from the YANG library, over HTTPS. Works on '
+    + 'devices that do not run NETCONF at all.',
+}
+
+/**
+ * Which protocol a device was last discovered over.
+ *
+ * Kept per device rather than globally, because the answer is a property of
+ * the device: a lab router speaks both, and a sandbox often speaks only one.
+ */
+function storedTransport(slug: string): Transport {
+  if (!slug) return 'netconf'
+  try {
+    return localStorage.getItem(`yangstudio.transport.${slug}`) === 'restconf'
+      ? 'restconf'
+      : 'netconf'
+  } catch {
+    return 'netconf'
+  }
+}
+
 export function Devices() {
   const qc = useQueryClient()
   const [selected, setSelected] = useState<string>('')
   const [draft, setDraft] = useState<Partial<Device> | null>(null)
   const [error, setError] = useState('')
+  const [transport, setTransport] = useState<Transport>('netconf')
+
+  /** Select a device, and restore the protocol it was last discovered over. */
+  const select = (slug: string) => {
+    setSelected(slug)
+    setTransport(storedTransport(slug))
+  }
+
+  const chooseTransport = (next: Transport) => {
+    setTransport(next)
+    setError('')
+    try {
+      localStorage.setItem(`yangstudio.transport.${selected}`, next)
+    } catch {
+      // A browser with storage disabled still works, it just forgets.
+    }
+  }
 
   const devices = useQuery({ queryKey: ['devices'], queryFn: api.listDevices })
   const device = devices.data?.find((d) => d.slug === selected)
 
   const capabilities = useQuery<Capabilities>({
-    queryKey: ['capabilities', selected],
-    queryFn: () => api.capabilities(selected),
-    enabled: false,   // Only on explicit connect: it opens a real SSH session.
+    queryKey: ['capabilities', selected, transport],
+    queryFn: () => api.capabilities(selected, transport),
+    // Only on explicit connect: it reaches out to the device either way.
+    enabled: false,
     retry: false,
   })
 
@@ -40,7 +84,7 @@ export function Devices() {
     onSuccess: (saved) => {
       qc.invalidateQueries({ queryKey: ['devices'] })
       setDraft(null)
-      setSelected(saved.slug)
+      select(saved.slug)
       setError('')
     },
     onError: fail,
@@ -50,7 +94,7 @@ export function Devices() {
     mutationFn: (slug: string) => api.deleteDevice(slug),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['devices'] })
-      setSelected('')
+      select('')
     },
     onError: fail,
   })
@@ -83,7 +127,7 @@ export function Devices() {
               size="sm"
               variant="ghost"
               onClick={() => {
-                setSelected('')
+                select('')
                 setDraft({ ...BLANK })
               }}
             >
@@ -104,7 +148,7 @@ export function Devices() {
               <button
                 key={d.slug}
                 onClick={() => {
-                  setSelected(d.slug)
+                  select(d.slug)
                   setDraft(null)
                 }}
                 className={clsx(
@@ -202,6 +246,25 @@ export function Devices() {
                   }
                 />
               </Labelled>
+              <Labelled label="RESTCONF port">
+                <Input
+                  type="number"
+                  value={String(editing.protocols?.restconf?.port ?? 443)}
+                  onChange={(e) =>
+                    setDraft({
+                      ...editing,
+                      protocols: {
+                        ...editing.protocols,
+                        restconf: {
+                          ...(editing.protocols?.restconf ?? {}),
+                          enabled: true,
+                          port: Number(e.target.value) || 443,
+                        },
+                      },
+                    })
+                  }
+                />
+              </Labelled>
               <Labelled label="Description">
                 <Input
                   value={editing.description ?? ''}
@@ -241,6 +304,29 @@ export function Devices() {
           actions={
             selected ? (
               <>
+                <div
+                  role="radiogroup"
+                  aria-label="Discovery protocol"
+                  className="mr-1 flex items-center rounded-md border border-line bg-surface p-0.5"
+                >
+                  {TRANSPORTS.map((option) => (
+                    <button
+                      key={option}
+                      role="radio"
+                      aria-checked={transport === option}
+                      title={WHY[option]}
+                      onClick={() => chooseTransport(option)}
+                      className={clsx(
+                        'rounded px-2 py-0.5 text-[10.5px] font-medium uppercase tracking-wide',
+                        transport === option
+                          ? 'bg-brand/20 text-ink'
+                          : 'text-ink-faint hover:text-ink-muted',
+                      )}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
                 <Button
                   size="sm"
                   variant="primary"
@@ -252,9 +338,12 @@ export function Devices() {
                 >
                   <PlugZap className="size-3.5" /> Connect
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => api.disconnect(selected)}>
-                  <Plug className="size-3.5" />
-                </Button>
+                {/* Only NETCONF holds a session there is anything to close. */}
+                {transport === 'netconf' ? (
+                  <Button size="sm" variant="ghost" onClick={() => api.disconnect(selected)}>
+                    <Plug className="size-3.5" />
+                  </Button>
+                ) : null}
               </>
             ) : null
           }
@@ -265,7 +354,13 @@ export function Devices() {
               hint="Connect to a device to list the YANG modules it advertises — then pick the ones you want and download them into a repository."
             />
           ) : capabilities.isFetching ? (
-            <Spinner label="Opening NETCONF session…" />
+            <Spinner
+              label={
+                transport === 'restconf'
+                  ? 'Reading the YANG library…'
+                  : 'Opening NETCONF session…'
+              }
+            />
           ) : capabilities.isError ? (
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
               <p className="mb-2 text-sm font-medium text-danger">Could not connect</p>
@@ -277,12 +372,17 @@ export function Devices() {
           ) : !capabilities.data ? (
             <EmptyState
               title="Not connected"
-              hint="Press Connect to open a NETCONF session and read the device's capabilities."
+              hint={
+                transport === 'restconf'
+                  ? "Press Connect to read the device's YANG library over RESTCONF."
+                  : "Press Connect to open a NETCONF session and read the device's capabilities."
+              }
             />
           ) : (
             <CapabilityBrowser
               capabilities={capabilities.data}
               deviceSlug={selected}
+              transport={transport}
               onRepositoriesChanged={() =>
                 qc.invalidateQueries({ queryKey: ['repositories'] })
               }

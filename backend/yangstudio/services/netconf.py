@@ -25,6 +25,7 @@ from ncclient.transport.errors import (
 )
 
 from ..core.devices import Device
+from ..core.quickparse import dependencies_of
 
 # Cisco platforms want specific ncclient device handlers.
 _HANDLERS = {
@@ -255,7 +256,7 @@ def download_schemas(
         results[name] = text
 
         if follow_dependencies:
-            for dep in _dependencies_of(text):
+            for dep in dependencies_of(text):
                 if dep in seen:
                     continue
                 seen.add(dep)
@@ -293,19 +294,6 @@ def _fetch_schema(device: Device, connection, name: str) -> tuple[str, _Failure 
         return "", _Failure(f"{type(exc).__name__}: {exc}", retryable=True)
     except Exception as exc:
         return "", _Failure(f"{type(exc).__name__}: {exc}", retryable=True)
-
-
-def _dependencies_of(text: str) -> list[str]:
-    """Modules this one imports or includes, from its header alone."""
-    from ..core.quickparse import parse_text
-
-    info = parse_text(text)
-    if info is None:
-        return []
-    deps = list(info.imports) + list(info.includes)
-    if info.belongs_to:
-        deps.append(info.belongs_to)
-    return deps
 
 
 # Failures that mean the session itself is unusable, as opposed to the device

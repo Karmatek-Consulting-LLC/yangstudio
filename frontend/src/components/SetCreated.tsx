@@ -12,14 +12,15 @@ import { useState } from 'react'
 import { MissingImports } from './MissingImports'
 import { Button, Input } from './ui'
 import { api, ApiError } from '@/lib/api'
-import type { SetCreated as SetCreatedResult } from '@/lib/types'
+import type { SetCreated as SetCreatedResult, Transport } from '@/lib/types'
 
 export function SetCreated({
-  created, repository, deviceSlug, onOpenSet,
+  created, repository, deviceSlug, transport = 'netconf', onOpenSet,
 }: {
   created: SetCreatedResult
   repository: string
   deviceSlug?: string
+  transport?: Transport
   onOpenSet?: (slug: string) => void
 }) {
   const qc = useQueryClient()
@@ -114,6 +115,7 @@ export function SetCreated({
           validation={created.validation}
           repository={repository}
           deviceSlug={deviceSlug}
+          transport={transport}
         />
       ) : null}
     </div>
