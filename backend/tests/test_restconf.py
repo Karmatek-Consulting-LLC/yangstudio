@@ -206,3 +206,41 @@ def test_the_fields_separator_is_percent_encoded(planned):
     assert ";" not in requests[0].query
     assert requests[0].query.count("%3B") == 1
     assert _fields(requests[0]) == {"hostname", "load"}
+
+
+def test_a_value_on_a_read_leaf_is_called_out_not_dropped(planned):
+    """NETCONF content-matches on a leaf value; RESTCONF has no equivalent.
+
+    RFC 8040 gives a data resource content, depth, fields and with-defaults.
+    Its filter parameter is for event streams. So a value on anything but a
+    list key cannot narrow a GET, and silently ignoring it makes the request
+    look like it did something it did not.
+    """
+    requests = planned([_sel("/config/hostname", "r1")])
+    assert len(requests) == 1
+    assert requests[0].method == "GET"
+    note = " ".join(requests[0].notes)
+    assert "hostname" in note
+    assert "cannot match" in note or "no way to match" in note
+    assert "NETCONF" in note
+
+
+def test_a_key_value_narrows_the_url_and_says_nothing(planned):
+    """A key is the one value RESTCONF can act on, so it is not a complaint."""
+    requests = planned([_sel("/config/peer/id", "p1"), _sel("/config/peer/address")])
+    assert len(requests) == 1
+    assert requests[0].path.endswith("/peer=p1")
+    assert requests[0].notes == []
+
+
+def test_a_read_with_no_values_is_quiet(planned):
+    requests = planned([_sel("/config/hostname"), _sel("/config/load")])
+    assert all(r.notes == [] for r in requests)
+
+
+def test_writes_use_the_value_and_do_not_complain(planned):
+    """On a write the value is the payload, which is the point of it."""
+    requests = planned([_sel("/config/hostname", "r1")], "merge")
+    assert requests[0].method == "PATCH"
+    assert requests[0].notes == []
+    assert "r1" in requests[0].body

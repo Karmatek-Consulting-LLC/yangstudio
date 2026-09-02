@@ -131,6 +131,19 @@ function RequestCard({
         </Button>
       </div>
 
+      {request.notes?.length ? (
+        <div className="shrink-0 px-3 pb-1.5">
+          {request.notes.map((note) => (
+            <p
+              key={note}
+              className="rounded border border-warn/40 bg-warn/10 px-2 py-1.5 text-[11px] leading-relaxed text-warn"
+            >
+              {note}
+            </p>
+          ))}
+        </div>
+      ) : null}
+
       {request.covers.length ? (
         <p className="shrink-0 px-3 pb-1.5 font-mono text-[10px] text-ink-faint">
           covers {request.covers.join('  ·  ')}

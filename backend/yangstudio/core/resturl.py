@@ -38,6 +38,9 @@ class RestRequest:
     content_type: str = ""
     # What this request came from, so the UI can tie it back to the tree.
     covers: list[str] = field(default_factory=list)
+    # Anything about the selection that RESTCONF cannot express, so it can be
+    # said out loud rather than silently dropped.
+    notes: list[str] = field(default_factory=list)
 
     @property
     def url(self) -> str:
@@ -52,6 +55,7 @@ class RestRequest:
             "body": self.body,
             "content_type": self.content_type,
             "covers": self.covers,
+            "notes": self.notes,
         }
 
 
