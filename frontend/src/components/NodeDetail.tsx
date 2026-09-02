@@ -6,7 +6,7 @@
  * and both paths without any further clicking.
  */
 import clsx from 'clsx'
-import { Check, Copy, Plus, Trash2 } from 'lucide-react'
+import { Check, Copy, Crosshair, Plus, Trash2 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 
 import { Badge, Button, EmptyState } from './ui'
@@ -56,9 +56,13 @@ interface Props {
   node: YangNode | null
   isSelected: boolean
   onToggleSelect: (node: YangNode) => void
+  /** Make this node the root of the tree — only offered when it has children. */
+  onFocus?: (node: YangNode) => void
+  /** The module owning this node's parent, when it differs — i.e. this is a graft point. */
+  parentModule?: string
 }
 
-export function NodeDetail({ node, isSelected, onToggleSelect }: Props) {
+export function NodeDetail({ node, isSelected, onToggleSelect, onFocus, parentModule }: Props) {
   if (!node) {
     return (
       <EmptyState
@@ -100,6 +104,12 @@ export function NodeDetail({ node, isSelected, onToggleSelect }: Props) {
               {node.presence ? <Badge>presence</Badge> : null}
             </p>
           </div>
+          {onFocus && node.children.length ? (
+            <Button size="sm" variant="ghost" onClick={() => onFocus(node)} title="Show only this subtree">
+              <Crosshair className="size-3" />
+              Focus
+            </Button>
+          ) : null}
           <Button
             size="sm"
             variant={isSelected ? 'danger' : 'primary'}
@@ -202,6 +212,13 @@ export function NodeDetail({ node, isSelected, onToggleSelect }: Props) {
               <span className="text-ink-faint"> @ {node.revision}</span>
             ) : null}
           </span>
+          {parentModule && parentModule !== node.module ? (
+            /* The answer to "why is this here when I never loaded that
+               module": it was grafted in by an augment. */
+            <p className="mt-0.5 text-[11px] text-ink-faint">
+              augments <span className="font-mono">{parentModule}</span> here
+            </p>
+          ) : null}
         </Field>
         <PathRow label="Namespace" value={node.namespace} />
 

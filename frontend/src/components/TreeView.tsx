@@ -7,7 +7,7 @@
  */
 import { useVirtualizer } from '@tanstack/react-virtual'
 import clsx from 'clsx'
-import { ChevronRight, Key, Lock } from 'lucide-react'
+import { ChevronRight, Crosshair, Key, Lock } from 'lucide-react'
 import { useCallback, useEffect, useRef } from 'react'
 
 import { Highlight } from './ui'
@@ -29,11 +29,13 @@ interface Props {
   query: string
   cursor: number
   onCursorChange: (index: number) => void
+  /** Make this node the tree's root — pyang's --tree-path, from a row. */
+  onFocus?: (node: YangNode) => void
 }
 
 export function TreeView({
   rows, expanded, onToggle, activeId, onActivate,
-  selectedPaths, onToggleSelect, query, cursor, onCursorChange,
+  selectedPaths, onToggleSelect, query, cursor, onCursorChange, onFocus,
 }: Props) {
   const parentRef = useRef<HTMLDivElement>(null)
 
@@ -98,6 +100,12 @@ export function TreeView({
           event.preventDefault()
           if (row) onActivate(row.node)
           break
+        case 'f':
+        case 'F':
+          if (event.metaKey || event.ctrlKey || event.altKey) break
+          event.preventDefault()
+          if (row && row.node.children.length) onFocus?.(row.node)
+          break
         case ' ':
           event.preventDefault()
           if (row) onToggleSelect(row.node)
@@ -112,7 +120,7 @@ export function TreeView({
           break
       }
     },
-    [rows, cursor, expanded, onToggle, onActivate, onToggleSelect, onCursorChange],
+    [rows, cursor, expanded, onToggle, onActivate, onToggleSelect, onCursorChange, onFocus],
   )
 
   return (
@@ -249,6 +257,19 @@ export function TreeView({
               <span className="hidden shrink-0 truncate font-mono text-[10px] text-ink-faint group-hover:block max-w-[42%]">
                 {node.xpath}
               </span>
+              {node.children.length && onFocus ? (
+                <button
+                  aria-label={`Focus on ${node.name}`}
+                  title="Focus the tree on this node (F)"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onFocus(node)
+                  }}
+                  className="hidden shrink-0 rounded p-0.5 text-ink-faint hover:bg-overlay hover:text-ink group-hover:block"
+                >
+                  <Crosshair className="size-3" />
+                </button>
+              ) : null}
             </div>
           )
         })}
