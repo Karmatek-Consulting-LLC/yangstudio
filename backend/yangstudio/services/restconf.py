@@ -36,6 +36,15 @@ from . import explorer
 ACCEPT = "application/yang-data+json"
 CONTENT_TYPE = "application/yang-data+json"
 
+# RFC 8040 section 4.8.3 separates the nodes in ?fields= with a semicolon, and
+# writes it literally. It has to be percent-encoded anyway, because a query
+# string is also allowed to use ";" where "&" would go — an old W3C
+# recommendation that some servers still honour. IOS-XE 17.16 is one: it
+# splits on the literal separator and then rejects everything after the first
+# node as an unknown query parameter, while 17.3 accepts it. Encoded works on
+# both, so it is not worth emitting the readable form for anyone.
+FIELD_SEPARATOR = "%3B"
+
 
 def _index(flat: list[dict]) -> tuple[dict, dict]:
     """Look-up tables from both the plain and prefixed data paths."""
@@ -159,7 +168,9 @@ def _plan_reads(resolved, by_pfx: dict, key_values: dict) -> list[RestRequest]:
             standalone.extend(members)
             continue
         path = build_path(parent_chain, key_values)
-        fields = ";".join(dict.fromkeys(row["name"] for row, _ in members))
+        fields = FIELD_SEPARATOR.join(
+            dict.fromkeys(row["name"] for row, _ in members)
+        )
         requests.append(
             RestRequest(
                 method="GET",

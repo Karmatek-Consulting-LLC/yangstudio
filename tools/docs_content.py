@@ -780,11 +780,24 @@ GET /restconf/data/<b>ietf-interfaces:interfaces</b>/interface=<span class="hl">
       whereas a RESTCONF call addresses exactly one resource. Where several of
       your selected leaves share a parent, they are folded into a single
       request using a <code>fields</code> query:</p>
-      <pre>GET /restconf/data/ietf-interfaces:interfaces/interface<span class="hl">?fields=name;description;type</span></pre>
+      <pre>GET /restconf/data/ietf-interfaces:interfaces/interface<span class="hl">?fields=name%3Bdescription%3Btype</span></pre>
       <p>Anything that cannot be folded in becomes a request of its own, and
       the panel tells you when that happens rather than quietly issuing extra
       calls. Each planned request lists the tree paths it covers, so you can
       see exactly which of your selections it accounts for.</p>
+
+      <div class="note">
+        <p><b>Why the separator is written <code>%3B</code>.</b> RFC 8040
+        separates the nodes with a semicolon and writes it literally. A query
+        string is also allowed to use <code>;</code> where <code>&amp;</code>
+        would go, though — an old convention some web servers still honour —
+        and a server that reads it that way sees everything after the first
+        node as a separate, unknown parameter.</p>
+        <p>IOS-XE 17.16 does exactly this and answers <code>400 invalid query
+        parameter</code>, where 17.3 accepts the literal form. The encoded
+        separator works on both, so it is what gets sent. If you are writing
+        the URL by hand and get that error, this is why.</p>
+      </div>
     </div>
 
     {fig("response-restconf", "Three leaves folded into one fields query, and the JSON reply.", wide=True)}
