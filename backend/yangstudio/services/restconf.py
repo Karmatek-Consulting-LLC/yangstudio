@@ -140,11 +140,22 @@ def plan(
 
 
 def _plan_reads(resolved, by_pfx: dict, key_values: dict) -> list[RestRequest]:
-    """Fold sibling leaves into one GET with ?fields=, keep the rest separate."""
+    """Fold sibling leaves into one GET with ?fields=, keep the rest separate.
+
+    A value on a leaf means different things in the two protocols. NETCONF
+    turns it into a content match — send the leaf with text in it and the
+    device returns only the entries that match. RESTCONF has no equivalent:
+    RFC 8040 defines content, depth, fields and with-defaults for a data
+    resource, and its filter parameter applies to event streams rather than
+    data. So a value on anything but a list key cannot be expressed here, and
+    the leaf is read rather than matched. That is worth saying rather than
+    quietly ignoring.
+    """
     groups: dict[str, list] = {}
     standalone: list = []
+    unmatchable: list[str] = []
 
-    for _selection, row, chain in resolved:
+    for selection, row, chain in resolved:
         parent_path = row.get("xpath_pfx", "").rsplit("/", 1)[0]
         parent = by_pfx.get(parent_path)
         is_leaf = row.get("nodetype") in ("leaf", "leaf-list")
@@ -156,6 +167,12 @@ def _plan_reads(resolved, by_pfx: dict, key_values: dict) -> list[RestRequest]:
         # fetched without saying which entry (that is a 404).
         if is_key and row["name"] in key_values.get(parent_path, {}):
             continue
+
+        # A key's value pins the entry in the URL and is handled above. A
+        # value anywhere else has nowhere to go.
+        if selection.get("value") and not is_key:
+            unmatchable.append(row["name"])
+
         if is_leaf and parent is not None:
             groups.setdefault(parent_path, []).append((row, chain))
         else:
@@ -184,6 +201,21 @@ def _plan_reads(resolved, by_pfx: dict, key_values: dict) -> list[RestRequest]:
         requests.append(
             RestRequest(method="GET", path=build_path(chain, key_values), covers=[row["xpath_pfx"]])
         )
+
+    if unmatchable and requests:
+        named = ", ".join(dict.fromkeys(unmatchable))
+        plural = "" if len(set(unmatchable)) == 1 else "s"
+        # Every request in the plan is unfiltered, so every one carries it.
+        note = (
+            f"The value on {named} is not part of this request. RESTCONF has "
+            f"no way to match on a leaf's content — only a list key can "
+            f"narrow a GET, by going into the URL. The leaf{plural} will be "
+            f"read, not filtered. Switch to NETCONF if you need to match on "
+            f"the value."
+        )
+        for request in requests:
+            request.notes.append(note)
+
     return requests
 
 

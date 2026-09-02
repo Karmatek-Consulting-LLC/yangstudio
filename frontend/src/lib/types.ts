@@ -255,6 +255,8 @@ export interface RestRequest {
   content_type: string
   /** Data paths this call covers — several leaves can fold into one request. */
   covers: string[]
+  /** What the selection asked for that RESTCONF cannot express. */
+  notes?: string[]
 }
 
 export interface RestResult {
