@@ -548,3 +548,79 @@ def test_a_device_answering_without_a_library_is_described_differently(
     assert "must implement" not in message
     assert "address on the device profile" not in message
     assert "RFC 8525 or RFC 7895" in message
+
+
+# -- one module is the same problem as six hundred --------------------------
+
+def _one_module_404s(request):
+    library = {
+        "ietf-yang-library:modules-state": {
+            "module": [
+                {"name": "ietf-interfaces", "revision": "2014-05-08",
+                 "schema": "https://10.4.19.105:443/restconf/tailf/modules/ietf-interfaces/2014-05-08"},
+            ]
+        }
+    }
+    if request.url.path.endswith("host-meta"):
+        return httpx.Response(404)
+    if "ietf-yang-library:yang-library" in str(request.url):
+        return httpx.Response(404)
+    if "modules-state" in str(request.url):
+        return httpx.Response(200, json=library)
+    return httpx.Response(404)          # the schema URL
+
+
+def test_a_single_404_still_explains_itself(device, monkeypatch):
+    """The guidance must not depend on having asked for enough modules.
+
+    A run of failures long enough to abort gets an explanation. Asking for one
+    module and getting one 404 is the same problem, and used to come back as
+    a bare status code.
+    """
+    monkeypatch.setattr(restconf, "_client", _serve(_one_module_404s))
+    result = restconf.download_schemas(device, ["ietf-interfaces"])
+
+    assert result["schemas"] == {}
+    assert "only proxies /restconf/data" in result["aborted"]
+    assert "NETCONF" in result["aborted"]
+
+
+def test_a_404_names_the_url_the_device_advertised(device, monkeypatch):
+    """Seeing the URL is most of the diagnosis."""
+    monkeypatch.setattr(restconf, "_client", _serve(_one_module_404s))
+    result = restconf.download_schemas(device, ["ietf-interfaces"])
+
+    message = result["errors"]["ietf-interfaces"]
+    assert "/restconf/tailf/modules/ietf-interfaces/2014-05-08" in message
+    # Re-homed onto the address that was actually reached, not the inside one.
+    assert "10.4.19.105" not in message
+    assert "10.0.0.1" in message
+
+
+def test_a_partial_download_is_not_labelled_a_gateway_problem(device, monkeypatch):
+    """One module missing among several that worked is a different story."""
+    library = {
+        "ietf-yang-library:modules-state": {
+            "module": [
+                {"name": "gone", "schema": "/yang/gone"},
+                {"name": "here", "schema": "/yang/here"},
+            ]
+        }
+    }
+
+    def handler(request):
+        if request.url.path.endswith("host-meta"):
+            return httpx.Response(404)
+        if "ietf-yang-library:yang-library" in str(request.url):
+            return httpx.Response(404)
+        if "modules-state" in str(request.url):
+            return httpx.Response(200, json=library)
+        if request.url.path.endswith("/gone"):
+            return httpx.Response(404)
+        return httpx.Response(200, text="module here { }")
+
+    monkeypatch.setattr(restconf, "_client", _serve(handler))
+    result = restconf.download_schemas(device, ["gone", "here"])
+
+    assert sorted(result["schemas"]) == ["here"]
+    assert result["aborted"] == ""

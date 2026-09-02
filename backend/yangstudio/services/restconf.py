@@ -670,6 +670,14 @@ def _fetch_schema(
             f"HTTP {reply.status_code} fetching {name}",
             retryable=True, status=reply.status_code,
         )
+    if reply.status_code == 404:
+        # The device published this URL and is now denying it exists. Showing
+        # the URL is most of the explanation.
+        return "", _RestFailure(
+            f"HTTP 404 fetching {name} from {reply.request.url} — the device "
+            f"advertises this URL but does not serve it",
+            retryable=False, status=404,
+        )
     if not reply.is_success:
         return "", _RestFailure(
             f"HTTP {reply.status_code} fetching {name}",
@@ -686,19 +694,28 @@ def _fetch_schema(
     return text, None
 
 
+def _all_404s(count: int) -> str:
+    """The device published URLs it will not serve.
+
+    A gateway that proxies /restconf/data but not the schema paths behind it
+    produces exactly this: a perfect module list, and a 404 for every module
+    in it. The device may also be saying so itself — IOS-XE reports its
+    schemas with location NETCONF when that is the only way to get them.
+    """
+    subject = "the module" if count == 1 else f"all {count} modules"
+    return (
+        f"{subject} answered HTTP 404. The device advertises a download URL "
+        f"for each module but is not serving them — a gateway that only "
+        f"proxies /restconf/data will do this. The module list is still good; "
+        f"fetch the source over NETCONF, or upload the models into a "
+        f"repository and build the set from the device instead."
+    )
+
+
 def _why_it_stopped(failures: int, notfound: int, name: str) -> str:
     """Explain a run of failures in terms of what to do about it."""
     if notfound == failures:
-        # The library gave us URLs and the device is serving 404 on all of
-        # them. A gateway that proxies only /restconf/data does this: the
-        # module list is correct, but the source behind it is not exposed.
-        return (
-            f"stopped after {failures} modules in a row returned HTTP 404. The "
-            f"device advertises a download URL for each module but is not "
-            f"serving them — a gateway that only proxies /restconf/data will "
-            f"do this. The module list is still good; fetch the source over "
-            f"NETCONF or from an offline copy of the models."
-        )
+        return f"stopped after {failures} in a row — " + _all_404s(failures)
     return (
         f"stopped after {failures} modules failed in a row at {name!r} — the "
         f"device is not answering"
@@ -795,6 +812,12 @@ def download_schemas(
                     queue.append(dep)
                     if dep not in requested:
                         pulled_in.append(dep)
+
+    # The guidance above only fires once a run of failures is long enough to
+    # be worth stopping for. Asking for one module and getting one 404 is the
+    # same problem and deserves the same explanation.
+    if not aborted and not results and errors and notfound == len(errors):
+        aborted = _all_404s(len(errors))
 
     return {
         "schemas": results,
