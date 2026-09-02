@@ -2,12 +2,13 @@
 import { useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
 import {
-  AlertTriangle, ChevronsDownUp, ChevronsUpDown, FileWarning, Layers,
+  AlertTriangle, ChevronsDownUp, ChevronsUpDown, Crosshair, FileWarning, Layers,
   Maximize2, Minimize2, RefreshCw, Search, X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { EmptyTree } from '@/components/EmptyTree'
+import { ModuleSummary } from '@/components/ModuleSummary'
 import { NodeDetail } from '@/components/NodeDetail'
 import { Split } from '@/components/Split'
 import { RequestBuilder } from '@/components/RequestBuilder'
@@ -16,8 +17,8 @@ import { Badge, Button, EmptyState, Input, Kbd, Panel, Spinner } from '@/compone
 import { api } from '@/lib/api'
 import { NODE_TYPES, nodeStyle } from '@/lib/nodeStyle'
 import {
-  ancestorsOf, buildRows, emptyFilters, hasActiveFilters, namespaceMap,
-  type TreeFilters,
+  ancestorsOf, buildRows, emptyFilters, hasActiveFilters, isPathQuery, moduleContributions,
+  namespaceMap, type TreeFilters,
 } from '@/lib/tree'
 import type { Access, NodeType, Selection, YangNode } from '@/lib/types'
 
@@ -39,6 +40,10 @@ export function Explore({
   const [filters, setFilters] = useState<TreeFilters>(emptyFilters)
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [activeId, setActiveId] = useState<number | null>(null)
+  // A focused node becomes the tree's only root — pyang's --tree-path. It is
+  // separate from the filters because it changes where the tree starts, not
+  // which nodes within it are kept.
+  const [focusId, setFocusId] = useState<number | null>(null)
   const [cursor, setCursor] = useState(0)
   const [showDiagnostics, setShowDiagnostics] = useState(false)
   // A reply needs far more room than the request that produced it, so the
@@ -64,6 +69,7 @@ export function Explore({
     const roots = modules.flatMap((m) => m.children.map((c) => c.id))
     setExpanded(new Set(roots.slice(0, 40)))
     setActiveId(null)
+    setFocusId(null)
     setCursor(0)
   }, [modules])
 
@@ -73,9 +79,14 @@ export function Explore({
   }, [modules, registerNodes])
 
   const { rows, matchCount } = useMemo(
-    () => buildRows(modules, expanded, filters),
-    [modules, expanded, filters],
+    () => buildRows(modules, expanded, filters, focusId),
+    [modules, expanded, filters, focusId],
   )
+
+  const contributions = useMemo(() => moduleContributions(modules), [modules])
+  const focusedContribution = filters.module
+    ? contributions.find((c) => c.name === filters.module) ?? null
+    : null
 
   const nodeById = useMemo(() => {
     const map = new Map<number, YangNode>()
@@ -97,28 +108,51 @@ export function Explore({
     return map
   }, [modules])
 
+  // Open every ancestor and land on the node. A focus that would hide it is
+  // dropped: a link that leads nowhere is worse than losing the focus.
+  const showNode = useCallback(
+    (id: number) => {
+      const trail = ancestorsOf(modules, id)
+      setExpanded((prev) => new Set([...prev, ...trail]))
+      setFocusId((current) =>
+        current !== null && current !== id && !trail.includes(current) ? null : current,
+      )
+      setActiveId(id)
+    },
+    [modules],
+  )
+
   const reveal = useCallback(
     (xpath: string) => {
       const id = idByPath.get(xpath)
-      if (id === undefined) return
-      setExpanded((prev) => new Set([...prev, ...ancestorsOf(modules, id)]))
-      setActiveId(id)
+      if (id !== undefined) showNode(id)
     },
-    [idByPath, modules],
+    [idByPath, showNode],
   )
 
+  const focusOn = useCallback((id: number) => {
+    setFocusId(id)
+    setExpanded((prev) => new Set([...prev, id]))
+    setActiveId(id)
+    setCursor(0)
+  }, [])
+
   const activeNode = activeId !== null ? (nodeById.get(activeId) ?? null) : null
+  const focusNode = focusId !== null ? (nodeById.get(focusId) ?? null) : null
+  const activeParentModule = useMemo(() => {
+    if (!activeNode) return undefined
+    const parentId = ancestorsOf(modules, activeNode.id).at(-1)
+    return parentId === undefined ? activeNode.module : nodeById.get(parentId)?.module
+  }, [activeNode, modules, nodeById])
   const namespaces = useMemo(() => namespaceMap(modules), [modules])
   const selectedPaths = useMemo(() => new Set(selections.map((s) => s.xpath)), [selections])
 
   // Handle a jump request from the palette: expand ancestors and scroll to it.
   useEffect(() => {
     if (jumpTo === null) return
-    const path = ancestorsOf(modules, jumpTo)
-    setExpanded((prev) => new Set([...prev, ...path]))
-    setActiveId(jumpTo)
+    showNode(jumpTo)
     onJumpHandled()
-  }, [jumpTo, modules, onJumpHandled])
+  }, [jumpTo, showNode, onJumpHandled])
 
   // Once the row exists (after expanding), park the cursor on it.
   useEffect(() => {
@@ -204,8 +238,8 @@ export function Explore({
           <Input
             value={filters.query}
             onChange={(e) => setFilters((f) => ({ ...f, query: e.target.value }))}
-            placeholder="Filter by name, path, type or description…"
-            className="pl-8"
+            placeholder="Filter by name, path, type or description… or /a/path to match from the root"
+            className={clsx('pl-8', isPathQuery(filters.query) && 'font-mono')}
           />
           {filters.query ? (
             <button
@@ -282,6 +316,30 @@ export function Explore({
           </button>
         ))}
 
+        <span className="mx-1 h-4 w-px bg-line" />
+
+        {/* Which module put it there. Feature modules on a vendor model own
+            almost no tree of their own — they graft into native — so this is
+            the only way to see one module's contribution in context. */}
+        <select
+          value={filters.module}
+          onChange={(e) => setFilters((f) => ({ ...f, module: e.target.value }))}
+          title="Show only nodes contributed by one module"
+          className={clsx(
+            'h-6 max-w-64 rounded-full border px-2 text-[11px] transition-colors',
+            filters.module
+              ? 'border-brand bg-brand/15 text-ink'
+              : 'border-line bg-surface text-ink-muted hover:bg-raised',
+          )}
+        >
+          <option value="">any module</option>
+          {contributions.map((c) => (
+            <option key={c.name} value={c.name}>
+              {c.name} ({c.count.toLocaleString()})
+            </option>
+          ))}
+        </select>
+
         <span className="flex-1" />
 
         {hasActiveFilters(filters) ? (
@@ -310,6 +368,31 @@ export function Explore({
           </button>
         ) : null}
       </div>
+
+      {focusedContribution ? (
+        <ModuleSummary
+          contribution={focusedContribution}
+          onReveal={showNode}
+          onFocus={focusOn}
+          onClear={() => setFilters((f) => ({ ...f, module: '' }))}
+        />
+      ) : null}
+
+      {focusNode ? (
+        <div className="flex items-center gap-2 rounded-md border border-line bg-surface px-3 py-1.5 text-[12px]">
+          <Crosshair className="size-3.5 shrink-0 text-brand" />
+          <span className="text-ink-muted">Focused on</span>
+          <code className="min-w-0 truncate font-mono text-[12px] text-ink">{focusNode.xpath}</code>
+          <span className="text-ink-faint">
+            {rows.length.toLocaleString()} row{rows.length === 1 ? '' : 's'} shown
+          </span>
+          <span className="flex-1" />
+          <Button size="sm" variant="ghost" onClick={() => setFocusId(null)} title="Show the whole tree again">
+            <X className="size-3.5" />
+            Whole tree
+          </Button>
+        </div>
+      ) : null}
 
       {showDiagnostics && diagnostics.length ? (
         <div className="max-h-40 overflow-y-auto rounded-md border border-line bg-surface p-2">
@@ -368,9 +451,10 @@ export function Explore({
               onActivate={(node) => setActiveId(node.id)}
               selectedPaths={selectedPaths}
               onToggleSelect={toggleSelect}
-              query={filters.query}
+              query={isPathQuery(filters.query) ? '' : filters.query}
               cursor={cursor}
               onCursorChange={setCursor}
+              onFocus={(node) => focusOn(node.id)}
             />
           )}
 
@@ -385,6 +469,7 @@ export function Explore({
                 <span className="flex items-center gap-1"><Kbd>→</Kbd><Kbd>←</Kbd> open / close</span>
                 <span className="flex items-center gap-1"><Kbd>Enter</Kbd> inspect</span>
                 <span className="flex items-center gap-1"><Kbd>Space</Kbd> add to request</span>
+                <span className="flex items-center gap-1"><Kbd>F</Kbd> focus</span>
                 <span className="flex-1" />
                 <span className="hidden text-ink-faint group-focus-within:inline">keys active</span>
               </div>
@@ -438,6 +523,8 @@ export function Explore({
               node={activeNode}
               isSelected={activeNode ? selectedPaths.has(activeNode.xpath_pfx) : false}
               onToggleSelect={toggleSelect}
+              onFocus={(node) => focusOn(node.id)}
+              parentModule={activeParentModule}
             />
           </Panel>
 
