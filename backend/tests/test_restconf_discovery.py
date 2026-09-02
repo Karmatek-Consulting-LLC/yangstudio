@@ -502,3 +502,49 @@ def test_a_module_listed_without_a_url_is_told_apart_from_an_unknown_one(
 
     assert "publishes no download URL" in result["errors"]["listed-only"]
     assert "not in the device's YANG library" in result["errors"]["never-heard-of"]
+
+
+# -- saying what was actually tried -----------------------------------------
+
+def test_a_wrong_address_names_the_urls_it_tried(device, monkeypatch):
+    """404 everywhere is usually the address, not a device without a library.
+
+    Sandbox gateways route by hostname and answer 404 to every path under a
+    name they do not recognise. That is indistinguishable from a device with
+    no YANG library unless the error says which URL it asked for.
+    """
+    def handler(request):
+        return httpx.Response(404)
+
+    monkeypatch.setattr(restconf, "_client", _serve(handler))
+    with pytest.raises(restconf.RestconfError) as caught:
+        restconf.capabilities(device)
+
+    message = str(caught.value)
+    assert "ietf-yang-library:yang-library -> HTTP 404" in message
+    assert "ietf-yang-library:modules-state -> HTTP 404" in message
+    # httpx drops the default port when it renders the URL; what matters is
+    # that the host the request actually went to is in the message.
+    assert "https://10.0.0.1/restconf" in message
+    # And it should point at the likely cause rather than the unlikely one.
+    assert "address on the device profile" in message
+
+
+def test_a_device_answering_without_a_library_is_described_differently(
+    device, monkeypatch,
+):
+    """200 with the wrong body is a real missing-library, not a bad address."""
+    def handler(request):
+        if request.url.path.endswith("host-meta"):
+            return httpx.Response(404)
+        return httpx.Response(200, json={"something-else": {}})
+
+    monkeypatch.setattr(restconf, "_client", _serve(handler))
+    with pytest.raises(restconf.RestconfError) as caught:
+        restconf.capabilities(device)
+
+    message = str(caught.value)
+    assert "no modules in it" in message
+    assert "must implement" not in message
+    assert "address on the device profile" not in message
+    assert "RFC 8525 or RFC 7895" in message

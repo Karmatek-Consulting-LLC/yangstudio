@@ -486,7 +486,7 @@ def _read_library(
     on its own.
     """
     listable = None      # modules, but nothing to download them from
-    trouble = ""
+    attempts: list[str] = []
     for path in LIBRARY_PATHS:
         try:
             reply = client.get(
@@ -505,18 +505,18 @@ def _read_library(
                 f"{reply.status_code}). Check the username and password, and "
                 f"that the device has 'ip http authentication local' configured."
             )
+        attempts.append(f"  GET {reply.request.url} -> HTTP {reply.status_code}")
         if not reply.is_success:
-            trouble = f"HTTP {reply.status_code} from {path}"
             continue
         try:
             body = reply.json()
         except ValueError:
-            trouble = f"{path} did not return JSON"
+            attempts[-1] += " but not JSON"
             continue
 
         modules, submodules = _extract_library(body)
         if not modules:
-            trouble = f"{path} returned no modules"
+            attempts[-1] += " but no modules in it"
             continue
 
         source = path.rsplit(":", 1)[-1]
@@ -528,10 +528,37 @@ def _read_library(
     if listable is not None:
         return listable
 
-    raise RestconfError(
-        f"{device.name} did not return a YANG library — {trouble}. RESTCONF "
-        f"discovery needs the device to implement ietf-yang-library."
+    raise RestconfError(_no_library(device, root, attempts))
+
+
+def _no_library(device: Device, root: str, attempts: list[str]) -> str:
+    """Say what was asked for and where, not just that it failed.
+
+    Naming the URL is most of the diagnosis. The common cause is an address
+    that does not match what the device is actually called: sandbox gateways
+    route by hostname and answer 404 to every path under a name they do not
+    recognise, which is indistinguishable from a device with no YANG library
+    until you can see the URL that was tried.
+    """
+    tried = "\n".join(attempts) if attempts else "  (the device did not answer)"
+    message = (
+        f"{device.name} did not return a YANG library.\n\nTried:\n{tried}\n\n"
     )
+    if attempts and all(line.endswith("HTTP 404") for line in attempts):
+        message += (
+            "Every path answered 404, so something is serving HTTP at that "
+            "address but not RESTCONF. Check the address on the device "
+            "profile first — a gateway that routes by hostname returns 404 "
+            "for every path under a name it does not know, which looks "
+            "exactly like this. Otherwise the device may not implement "
+            "ietf-yang-library, and the models have to come over NETCONF."
+        )
+    else:
+        message += (
+            "RESTCONF discovery needs the device to implement "
+            "ietf-yang-library, in either its RFC 8525 or RFC 7895 form."
+        )
+    return message
 
 
 def _restconf_capabilities(
