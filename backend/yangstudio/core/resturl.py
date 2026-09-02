@@ -33,7 +33,7 @@ class RestRequest:
 
     method: str
     path: str                       # e.g. /restconf/data/ietf-interfaces:interfaces
-    query: str = ""                 # e.g. fields=name;description
+    query: str = ""                 # e.g. fields=name%3Bdescription
     body: str = ""
     content_type: str = ""
     # What this request came from, so the UI can tie it back to the tree.

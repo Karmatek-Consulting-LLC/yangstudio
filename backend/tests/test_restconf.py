@@ -17,6 +17,11 @@ IFACE = PathNode("interface", "ietf-interfaces", "list", ["name"], prefix="if")
 DESC = PathNode("description", "ietf-interfaces", "leaf", prefix="if")
 
 
+def _fields(request) -> set[str]:
+    """The nodes in a ?fields= query, whatever the separator is encoded as."""
+    return set(request.query.removeprefix("fields=").split(restconf.FIELD_SEPARATOR))
+
+
 def test_first_node_is_qualified_by_module():
     assert build_path([IFACES], {}) == "/restconf/data/ietf-interfaces:interfaces"
 
@@ -92,7 +97,7 @@ def test_sibling_leaves_fold_into_one_get(planned):
     assert len(requests) == 1
     assert requests[0].method == "GET"
     assert requests[0].path == "/restconf/data/test-base:config"
-    assert set(requests[0].query.removeprefix("fields=").split(";")) == {"hostname", "load"}
+    assert _fields(requests[0]) == {"hostname", "load"}
 
 
 def test_a_keyed_leaf_puts_the_key_in_the_url_not_the_fields(planned):
@@ -107,7 +112,7 @@ def test_an_unvalued_key_stays_a_field(planned):
     requests = planned([_sel("/config/peer/id"), _sel("/config/peer/address")])
     assert len(requests) == 1
     assert requests[0].path.endswith("/peer")
-    assert set(requests[0].query.removeprefix("fields=").split(";")) == {"id", "address"}
+    assert _fields(requests[0]) == {"id", "address"}
 
 
 def test_netconf_verbs_map_to_http_methods(planned):
@@ -186,3 +191,18 @@ def test_two_modules_sharing_a_data_path_resolve_separately(repo_with_modules):
     assert ietf.path.startswith("/restconf/data/test-base:config")
     assert other.path.startswith("/restconf/data/other-base:config")
     assert ietf.path != other.path
+
+
+def test_the_fields_separator_is_percent_encoded(planned):
+    """RFC 8040 writes it literally, but a literal ";" is not safe to send.
+
+    A query string may also use ";" where "&" would go, an old W3C
+    recommendation some servers still honour. IOS-XE 17.16 does: it splits on
+    the literal separator and rejects everything after the first node as an
+    unknown query parameter, while 17.3 accepts it. Encoded works on both.
+    """
+    requests = planned([_sel("/config/hostname"), _sel("/config/load")])
+    assert len(requests) == 1
+    assert ";" not in requests[0].query
+    assert requests[0].query.count("%3B") == 1
+    assert _fields(requests[0]) == {"hostname", "load"}
