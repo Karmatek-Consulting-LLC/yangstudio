@@ -12,6 +12,7 @@ from fastapi.concurrency import run_in_threadpool
 from ..core import rpc as rpc_core
 from ..core.devices import PROTOCOLS, Device
 from ..core.quickparse import parse_file
+from ..core.resturl import raw_request
 from ..core.storage import Repository, StorageError, YangSet
 from ..core.tree import TreeError
 from ..services import explorer
@@ -731,6 +732,8 @@ def _plan(body: S.RestconfBuild):
         [s.model_dump() for s in body.selections],
         operation=body.operation,
         modules=body.modules or None,
+        compose=body.compose,
+        target=body.target,
     )
 
 
@@ -769,6 +772,25 @@ async def run_restconf(body: S.RestconfRun) -> dict:
         "ok": all(r["ok"] for r in results),
         "elapsed_ms": sum(r["elapsed_ms"] for r in results),
     }
+
+
+@router.post("/restconf/send")
+async def send_restconf(body: S.RestconfSend) -> dict:
+    """Send a hand-written request to a device, with the profile's credentials.
+
+    The planner covers what can be ticked in the tree. This covers the rest:
+    a body pasted from another client, or a planned request adjusted before it
+    goes out.
+    """
+    try:
+        device = Device.load(body.device)
+        request = raw_request(body.method, body.url, body.body)
+    except Exception as exc:
+        raise _wrap(exc) from exc
+
+    outcome = await run_in_threadpool(restconf_svc.run, device, request)
+    outcome["request"] = request.dict()
+    return outcome
 
 
 @router.get("/restconf/{slug}/capabilities")

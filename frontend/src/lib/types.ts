@@ -257,6 +257,29 @@ export interface RestRequest {
   covers: string[]
   /** What the selection asked for that RESTCONF cannot express. */
   notes?: string[]
+  /** For a composed write: the node the body starts at… */
+  target?: string
+  /** …and every node it could start at instead, outermost first. */
+  targets?: RestTarget[]
+}
+
+/** One level of the tree a composed write could be aimed at. */
+export interface RestTarget {
+  /** Prefixed path — what to send back as the chosen target. */
+  xpath: string
+  name: string
+  /** The URL a PUT or PATCH would go to at this level. */
+  path: string
+}
+
+/** How a RESTCONF write is laid out: every selection in one body, or one call per node. */
+export type ComposeMode = 'single' | 'per-node'
+
+/** A request written or edited by hand. */
+export interface RawRequest {
+  method: string
+  url: string
+  body: string
 }
 
 export interface RestResult {

@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import ClassVar
 
-from pyang import context, repository, statements
+from pyang import context, repository
 
 from .storage import YangSet
 
@@ -63,6 +63,9 @@ class _Builder:
 
     def __init__(self) -> None:
         self._next_id = 0
+        # Node id -> the data path its children hang from. A choice or case
+        # passes its parent's through unchanged.
+        self._data_base: dict[int, tuple[str, str]] = {}
 
     def _id(self) -> int:
         self._next_id += 1
@@ -237,18 +240,27 @@ class _Builder:
             "revision": revision,
         }
 
-        # Paths. mk_path_str raises on non-data nodes (rpc input/output etc),
-        # so fall back to composing from the parent.
-        try:
-            node["xpath"] = statements.mk_path_str(stmt, False)
-            node["xpath_pfx"] = statements.mk_path_str(stmt, True)
-        except Exception:
-            parent_xpath = parent.get("xpath", "") if parent else ""
-            node["xpath"] = f"{parent_xpath}/{stmt.arg}" if stmt.arg else parent_xpath
-            parent_pfx = parent.get("xpath_pfx", "") if parent else ""
-            node["xpath_pfx"] = (
-                f"{parent_pfx}/{prefix}:{stmt.arg}" if stmt.arg else parent_pfx
-            )
+        # Paths are data paths: what addresses the node on a device. A choice
+        # and its cases exist only in the schema — RFC 7950 section 7.9 — so
+        # they add no step, and a leaf inside one sits directly under the
+        # container that holds the choice. pyang's mk_path_str keeps the choice
+        # name, which put a step into every RESTCONF URL and NETCONF subtree
+        # under a choice that no device has. Composing from the nearest data
+        # ancestor gets this right, and also covers rpc input/output, where
+        # mk_path_str raises.
+        base, base_pfx = self._data_base.get(parent["id"], ("", "")) if parent else ("", "")
+        if stmt.keyword == "case" and parent:
+            # A case is shown at its choice; it has no place of its own.
+            node["xpath"], node["xpath_pfx"] = parent["xpath"], parent["xpath_pfx"]
+        elif stmt.arg and stmt.keyword not in ("input", "output"):
+            node["xpath"] = f"{base}/{stmt.arg}"
+            node["xpath_pfx"] = f"{base_pfx}/{prefix}:{stmt.arg}" if prefix else node["xpath"]
+        else:                       # input / output: no step of their own.
+            node["xpath"], node["xpath_pfx"] = base, base_pfx
+        schema_only = stmt.keyword in ("choice", "case")
+        self._data_base[node["id"]] = (
+            (base, base_pfx) if schema_only else (node["xpath"], node["xpath_pfx"])
+        )
         node["schema_id"] = node["xpath_pfx"]
 
         description = self._arg(stmt, "description")

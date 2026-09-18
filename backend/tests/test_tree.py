@@ -137,3 +137,61 @@ def test_a_grouping_only_module_parses_to_an_empty_tree(repo_with_modules):
     assert module["children"] == []                       # no data tree
     assert [d for d in parsed.diagnostics if d.level == "error"] == []
     assert module["defines"] == {"grouping": 2, "typedef": 1}
+
+
+def test_a_choice_adds_no_step_to_a_data_path(repo_with_modules):
+    """A choice and its cases exist only in the schema (RFC 7950 section 7.9).
+
+    pyang's own path helper keeps the choice name, which puts a step into every
+    RESTCONF URL and NETCONF subtree under one that no device has. On IOS-XE
+    that is some forty percent of the tree.
+    """
+    from yangstudio.services import explorer
+
+    repo, yangset = repo_with_modules
+    (repo.path / "choosy@2024-01-01.yang").write_text(
+        """
+        module choosy {
+          yang-version 1.1;
+          namespace "urn:example:choosy"; prefix ch;
+          revision 2024-01-01;
+          container rule {
+            choice source {
+              case host-case {
+                leaf host { type string; }
+                container detail {
+                  choice inner { leaf deep { type string; } }
+                }
+              }
+              case any-case { leaf any { type empty; } }
+            }
+          }
+          rpc poke {
+            input { choice how { leaf gently { type empty; } } }
+            output { leaf result { type string; } }
+          }
+        }
+        """
+    )
+    repo.modules(refresh=True)
+    yangset.modules.append({"name": "choosy", "revision": "2024-01-01"})
+    yangset.save()
+    explorer.invalidate(yangset.slug)
+
+    _, flat = explorer.get_parsed(yangset, None, False)
+    paths = {(r["nodetype"], r["name"]): r for r in flat if r["module"] == "choosy"}
+
+    assert paths[("leaf", "host")]["xpath"] == "/rule/host"
+    assert paths[("leaf", "host")]["xpath_pfx"] == "/ch:rule/ch:host"
+    assert paths[("leaf", "any")]["xpath"] == "/rule/any"
+    # A data node below a choice, and a choice below that, still add nothing.
+    assert paths[("container", "detail")]["xpath"] == "/rule/detail"
+    assert paths[("leaf", "deep")]["xpath"] == "/rule/detail/deep"
+    # The choice stays in the tree to be read, shown where it sits, and its
+    # cases with it.
+    assert paths[("choice", "source")]["xpath"] == "/rule/source"
+    assert paths[("case", "host-case")]["xpath"] == "/rule/source"
+    # rpc input and output add no step either, as before.
+    assert paths[("leaf", "gently")]["xpath"] == "/poke/gently"
+    assert paths[("leaf", "result")]["xpath"] == "/poke/result"
+

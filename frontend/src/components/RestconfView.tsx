@@ -6,15 +6,23 @@
  * sibling leaves collapse into one ?fields= query. Where NETCONF sends one
  * filter with several branches, RESTCONF addresses one resource per call — so
  * a selection can plan to more than one request, and that is worth seeing.
+ *
+ * A write can instead be composed into one request, every selection nested in
+ * a single body. That is the only form a device accepts for anything it
+ * validates as a whole — an access-list entry sent leaf by leaf is refused at
+ * the first leaf. The same change can be aimed at several levels of the tree,
+ * so the card says which and lets you move it.
  */
 import { useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { AlertTriangle, Play } from 'lucide-react'
+import { AlertTriangle, Pencil, Play } from 'lucide-react'
+import { useState } from 'react'
 
 import { CodeView } from './CodeView'
+import { RawRequestEditor } from './RawRequestEditor'
 import { Badge, Button, EmptyState, Spinner } from './ui'
 import { api, ApiError } from '@/lib/api'
-import type { RestRequest, RestResult, Selection } from '@/lib/types'
+import type { ComposeMode, RawRequest, RestRequest, RestResult, Selection } from '@/lib/types'
 
 const METHOD_STYLE: Record<string, string> = {
   GET: 'border-brand/40 bg-brand/10 text-brand',
@@ -25,21 +33,32 @@ const METHOD_STYLE: Record<string, string> = {
 }
 
 export function RestconfView({
-  yangsetSlug, selections, operation, results, onRun, running, canRun,
+  yangsetSlug, selections, operation, compose, target, onTargetChange,
+  results, onRun, onSendRaw, running, canRun,
 }: {
   yangsetSlug: string
   selections: Selection[]
   operation: string
+  compose: ComposeMode
+  /** Where a composed body starts; '' leaves it to the planner. */
+  target: string
+  onTargetChange: (xpath: string) => void
   results: RestResult[] | null
   onRun: (index?: number) => void
+  /** Send an edited request in place of the planned one at `index`. */
+  onSendRaw: (index: number, raw: RawRequest) => void
   running: boolean
   canRun: boolean
 }) {
   const plan = useQuery({
-    queryKey: ['restconf-build', yangsetSlug, operation, selections],
-    queryFn: () => api.buildRestconf({ yangset: yangsetSlug, operation, selections }),
+    queryKey: ['restconf-build', yangsetSlug, operation, selections, compose, target],
+    queryFn: () =>
+      api.buildRestconf({ yangset: yangsetSlug, operation, selections, compose, target }),
     enabled: Boolean(yangsetSlug) && selections.length > 0,
     retry: false,
+    // Moving the target re-plans; keep the old card up rather than flashing a
+    // spinner over the body you are in the middle of reading.
+    placeholderData: (previous) => previous,
   })
 
   if (selections.length === 0) {
@@ -80,6 +99,8 @@ export function RestconfView({
           request={request}
           result={results?.[index]}
           onRun={() => onRun(index)}
+          onSendRaw={(raw) => onSendRaw(index, raw)}
+          onTargetChange={onTargetChange}
           running={running}
           canRun={canRun}
           grow={single}
@@ -90,15 +111,25 @@ export function RestconfView({
 }
 
 function RequestCard({
-  request, result, onRun, running, canRun, grow,
+  request, result, onRun, onSendRaw, onTargetChange, running, canRun, grow,
 }: {
   request: RestRequest
   result?: RestResult
   onRun: () => void
+  onSendRaw: (raw: RawRequest) => void
+  onTargetChange: (xpath: string) => void
   running: boolean
   canRun: boolean
   grow?: boolean
 }) {
+  // Null while the planned request is what will be sent. Once edited, the
+  // draft is kept even if the plan changes underneath it: typed work is not
+  // something to throw away because a box was ticked.
+  const [draft, setDraft] = useState<RawRequest | null>(null)
+  const targets = request.targets ?? []
+  const drifted = draft !== null
+    && (draft.method !== request.method || draft.url !== request.url || draft.body !== request.body)
+
   return (
     <div
       className={clsx(
@@ -126,10 +157,49 @@ function RequestCard({
             {result.status || 'err'}
           </Badge>
         ) : null}
-        <Button size="sm" variant="outline" disabled={!canRun} loading={running} onClick={onRun}>
-          <Play className="size-3" /> Send
-        </Button>
+        {draft === null ? (
+          <>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setDraft({ method: request.method, url: request.url, body: request.body })}
+              title="Edit the method, URL and body by hand before sending"
+            >
+              <Pencil className="size-3" /> Edit
+            </Button>
+            <Button size="sm" variant="outline" disabled={!canRun} loading={running} onClick={onRun}>
+              <Play className="size-3" /> Send
+            </Button>
+          </>
+        ) : (
+          <Badge className="border-warn/40 bg-warn/10 text-warn">
+            {drifted ? 'edited by hand' : 'editing'}
+          </Badge>
+        )}
       </div>
+
+      {targets.length > 1 && draft === null ? (
+        <label className="flex shrink-0 flex-wrap items-center gap-1.5 px-3 pb-1.5 text-[11px] text-ink-faint">
+          Body starts at
+          <select
+            value={request.target}
+            onChange={(e) => onTargetChange(e.target.value)}
+            title="The same change can be a small body deep in the URL, or a larger body higher up"
+            className="h-6 max-w-72 rounded border border-line bg-surface px-1.5 font-mono text-[11px] text-ink"
+          >
+            {targets.map((t, depth) => (
+              <option key={t.xpath} value={t.xpath}>
+                {'\u00a0\u00a0'.repeat(depth)}{t.name}
+              </option>
+            ))}
+          </select>
+          <span>
+            {request.method === 'POST'
+              ? '— POST creates it, so the URL is its parent'
+              : '— the URL ends on it'}
+          </span>
+        </label>
+      ) : null}
 
       {request.notes?.length ? (
         <div className="shrink-0 px-3 pb-1.5">
@@ -150,7 +220,18 @@ function RequestCard({
         </p>
       ) : null}
 
-      {request.body ? (
+      {draft !== null ? (
+        <RawRequestEditor
+          draft={draft}
+          onChange={setDraft}
+          onSend={() => onSendRaw(draft)}
+          onReset={() => setDraft(null)}
+          resetLabel="Back to the planned request"
+          canSend={canRun}
+          sending={running}
+          blockedBy={canRun ? '' : 'Select a device to send this to.'}
+        />
+      ) : request.body ? (
         <div className="shrink-0 px-3 pb-2">
           <p className="mb-1 text-[10px] text-ink-faint">
             Content-Type: <span className="font-mono">{request.content_type}</span>
