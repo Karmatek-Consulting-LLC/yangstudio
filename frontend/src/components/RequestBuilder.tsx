@@ -6,15 +6,18 @@
  */
 import { useMutation } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { AlertTriangle, Play, Send, Trash2, X } from 'lucide-react'
+import { AlertTriangle, PencilLine, Play, Send, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { CodeView } from './CodeView'
+import { RawRequestEditor } from './RawRequestEditor'
 import { RestconfView } from './RestconfView'
 import { Badge, Button, EmptyState } from './ui'
 import { api, ApiError } from '@/lib/api'
 import { nodeStyle } from '@/lib/nodeStyle'
-import type { Device, RestResult, RpcResult, Selection } from '@/lib/types'
+import type {
+  ComposeMode, Device, RawRequest, RestResult, RpcResult, Selection,
+} from '@/lib/types'
 
 const READ_OPS = ['get', 'get-config'] as const
 const EDIT_OPS = ['edit-config'] as const
@@ -28,6 +31,14 @@ const NETCONF_OPERATIONS = [...READ_OPS, ...EDIT_OPS, ...DATASTORE_OPS, 'rpc'] a
 const needsSelection = (op: string) => !(DATASTORE_OPS as readonly string[]).includes(op)
 // RESTCONF speaks HTTP methods, so offer those rather than silently translating.
 const RESTCONF_OPERATIONS = ['GET', 'PATCH', 'PUT', 'POST', 'DELETE'] as const
+// The methods that carry a body, and so can be composed into one request.
+const RESTCONF_WRITES: readonly string[] = ['PATCH', 'PUT', 'POST']
+
+const failedResult = (error: unknown): RestResult => ({
+  ok: false, status: 0, elapsed_ms: 0,
+  error: { message: error instanceof ApiError ? error.message : String(error) },
+  request: { method: '', path: '', query: '', url: '', body: '', content_type: '', covers: [] },
+})
 
 const NODE_OPS = ['merge', 'replace', 'create', 'delete', 'remove'] as const
 
@@ -61,8 +72,17 @@ export function RequestBuilder({
   const [protocol, setProtocol] = useState<'netconf' | 'restconf'>('netconf')
   const [restResults, setRestResults] = useState<RestResult[] | null>(null)
   const [staged, setStaged] = useState(false)
+  // A RESTCONF write defaults to one composed request: a device validates each
+  // call on its own, so anything with more than one required part — an ACL
+  // entry, a BGP neighbour — is refused when it arrives a leaf at a time.
+  const [compose, setCompose] = useState<ComposeMode>('single')
+  const [target, setTarget] = useState('')
+  // With nothing ticked, a request can still be written by hand.
+  const [scratch, setScratch] = useState<RawRequest | null>(null)
+  const [scratchResult, setScratchResult] = useState<RestResult | null>(null)
 
   const isEdit = operation === 'edit-config'
+  const isRestWrite = protocol === 'restconf' && RESTCONF_WRITES.includes(operation)
 
   // Rebuild the XML whenever the request changes. Only while NETCONF is the
   // active protocol: the operation list differs, and sending an HTTP method to
@@ -129,25 +149,83 @@ export function RequestBuilder({
     onSuccess: (r) => { setResult(r); setTab('response'); onRan?.() },
   })
 
+  // One card's reply belongs under that card. Running a single request used
+  // to replace the whole list, which filed its reply under the first one.
+  const placeResults = (incoming: RestResult[], only?: number) =>
+    setRestResults((previous) => {
+      if (only === undefined) return incoming
+      const next = [...(previous ?? [])]
+      next[only] = incoming[0]
+      return next
+    })
+
   const runRest = useMutation({
-    mutationFn: (only?: number) =>
-      api.runRestconf({ yangset: yangsetSlug, device, operation, selections, only }),
-    onSuccess: (r) => {
-      setRestResults(r.results)
+    mutationFn: async ({ only, raw }: { only?: number; raw?: RawRequest }) => {
+      if (raw) return { results: [await api.sendRestconf({ device, ...raw })] }
+      return api.runRestconf({
+        yangset: yangsetSlug, device, operation, selections, only, compose, target,
+      })
+    },
+    onSuccess: (r, { only }) => {
+      placeResults(r.results, only)
       onRan?.()
     },
-    onError: (error: unknown) =>
-      setRestResults([
-        {
-          ok: false, status: 0, elapsed_ms: 0,
-          error: { message: error instanceof ApiError ? error.message : String(error) },
-          request: { method: '', path: '', query: '', url: '', body: '', content_type: '', covers: [] },
-        },
-      ]),
+    onError: (error: unknown, { only }) => placeResults([failedResult(error)], only),
+  })
+
+  const runScratch = useMutation({
+    mutationFn: (raw: RawRequest) => api.sendRestconf({ device, ...raw }),
+    onSuccess: (r) => { setScratchResult(r); onRan?.() },
+    onError: (error: unknown) => setScratchResult(failedResult(error)),
   })
 
   const update = (index: number, patch: Partial<Selection>) => {
     onChange(selections.map((s, i) => (i === index ? { ...s, ...patch } : s)))
+  }
+
+  if (selections.length === 0 && scratch) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-line-soft p-2">
+          <span className="text-[12px] text-ink">RESTCONF request, written by hand</span>
+          <span className="flex-1" />
+          <select
+            value={device}
+            onChange={(e) => setDevice(e.target.value)}
+            className="h-7 max-w-40 rounded border border-line bg-surface px-1.5 text-xs text-ink"
+          >
+            <option value="">Select device…</option>
+            {devices.map((d) => (
+              <option key={d.slug} value={d.slug}>{d.name}</option>
+            ))}
+          </select>
+          <Button size="sm" variant="ghost" onClick={() => setScratch(null)} title="Close">
+            <X className="size-3" />
+          </Button>
+        </div>
+        <div className="pt-2">
+          <RawRequestEditor
+            draft={scratch}
+            onChange={setScratch}
+            onSend={() => runScratch.mutate(scratch)}
+            canSend={Boolean(device)}
+            sending={runScratch.isPending}
+            blockedBy={device ? '' : 'Select a device to send this to.'}
+          />
+        </div>
+        {scratchResult ? (
+          <div className="flex min-h-0 flex-1 flex-col border-t border-line-soft">
+            <p className="shrink-0 px-3 py-1 text-[10px] text-ink-faint">
+              {scratchResult.status || 'error'} {scratchResult.reason} · {scratchResult.elapsed_ms} ms
+            </p>
+            <CodeView
+              source={scratchResult.reply || scratchResult.error?.message || '(empty response)'}
+              kind={scratchResult.ok ? 'json' : 'text'}
+            />
+          </div>
+        ) : null}
+      </div>
+    )
   }
 
   if (selections.length === 0) {
@@ -155,6 +233,16 @@ export function RequestBuilder({
       <EmptyState
         title="No nodes in the request"
         hint="Tick a node in the tree — or highlight one and press the Space bar — to start building a request. The XML is written as you go."
+        action={
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setScratch({ method: 'GET', url: '/restconf/data/', body: '' })}
+          >
+            <PencilLine className="size-3.5" />
+            Or write a RESTCONF request by hand
+          </Button>
+        }
       />
     )
   }
@@ -184,6 +272,29 @@ export function RequestBuilder({
               <option key={ds} value={ds}>{ds}</option>
             ))}
           </select>
+        ) : null}
+
+        {isRestWrite ? (
+          <div
+            className="flex overflow-hidden rounded border border-line"
+            title="One request carrying every node, or one request per node"
+          >
+            {([['single', 'One request'], ['per-node', 'Per node']] as const).map(([mode, label]) => (
+              <button
+                key={mode}
+                onClick={() => {
+                  setCompose(mode)
+                  setRestResults(null)      // The cards change; old replies would mislabel them.
+                }}
+                className={clsx(
+                  'h-7 px-2 text-[11px] transition-colors',
+                  compose === mode ? 'bg-raised text-ink' : 'bg-surface text-ink-faint hover:bg-raised',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         ) : null}
 
         <span className="flex-1" />
@@ -233,7 +344,7 @@ export function RequestBuilder({
               : selections.length === 0)
           }
           loading={run.isPending || runRest.isPending}
-          onClick={() => (protocol === 'netconf' ? run.mutate() : runRest.mutate(undefined))}
+          onClick={() => (protocol === 'netconf' ? run.mutate() : runRest.mutate({}))}
         >
           <Play className="size-3" />
           Run
@@ -280,6 +391,9 @@ export function RequestBuilder({
         {selections.map((selection, index) => {
           const style = nodeStyle(selection.nodetype)
           const leafLike = selection.nodetype === 'leaf' || selection.nodetype === 'leaf-list'
+          // An empty leaf says something by being there; there is no value to
+          // type, and asking for one suggests the tick alone does nothing.
+          const isEmpty = selection.datatype === 'empty'
           return (
             <div
               key={selection.xpath}
@@ -311,11 +425,15 @@ export function RequestBuilder({
                 </select>
               ) : null}
 
-              {leafLike ? (
+              {leafLike && isEmpty ? (
+                <Badge title="An empty-type leaf has no value: ticking it is what sets it">
+                  no value — set by being ticked
+                </Badge>
+              ) : leafLike ? (
                 <input
                   value={selection.value}
                   onChange={(e) => update(index, { value: e.target.value })}
-                  placeholder={isEdit ? 'value' : 'filter'}
+                  placeholder={isEdit || isRestWrite ? 'value' : 'filter'}
                   className="h-6 w-28 shrink-0 rounded border border-line bg-surface px-1.5 text-[11px] text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none"
                 />
               ) : null}
@@ -383,10 +501,17 @@ export function RequestBuilder({
               yangsetSlug={yangsetSlug}
               selections={selections}
               operation={operation}
+              compose={compose}
+              target={target}
+              onTargetChange={(xpath) => {
+                setTarget(xpath)
+                setRestResults(null)
+              }}
               results={restResults}
               running={runRest.isPending}
               canRun={Boolean(device)}
-              onRun={(index) => runRest.mutate(index)}
+              onRun={(index) => runRest.mutate({ only: index })}
+              onSendRaw={(index, raw) => runRest.mutate({ only: index, raw })}
             />
           )
         ) : (
@@ -401,10 +526,17 @@ export function RequestBuilder({
               yangsetSlug={yangsetSlug}
               selections={selections}
               operation={operation}
+              compose={compose}
+              target={target}
+              onTargetChange={(xpath) => {
+                setTarget(xpath)
+                setRestResults(null)
+              }}
               results={restResults}
               running={runRest.isPending}
               canRun={Boolean(device)}
-              onRun={(index) => runRest.mutate(index)}
+              onRun={(index) => runRest.mutate({ only: index })}
+              onSendRaw={(index, raw) => runRest.mutate({ only: index, raw })}
             />
           )
         )}

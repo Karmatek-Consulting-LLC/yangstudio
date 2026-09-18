@@ -1,7 +1,8 @@
 /** Typed wrapper around the HTTP API. */
 import type {
-  Capabilities, Device, Job, RepositoryDetail, RepositorySummary, RpcResult,
-  RestRequest, RestRunResult, Selection, SetCreated, Transport, TreeResponse,
+  Capabilities, ComposeMode, Device, Job, RawRequest, RepositoryDetail, RepositorySummary,
+  RpcResult, RestRequest, RestResult, RestRunResult, Selection, SetCreated, Transport,
+  TreeResponse,
   ValidationReport, YangSetDetail, YangSetSummary,
 } from './types'
 
@@ -167,6 +168,7 @@ export const api = {
   // -- restconf ------------------------------------------------------------
   buildRestconf: (body: {
     yangset: string; operation: string; selections: Selection[]
+    compose?: ComposeMode; target?: string
   }) =>
     request<{ requests: RestRequest[]; count: number }>('/restconf/build', {
       method: 'POST', ...json(body),
@@ -175,7 +177,12 @@ export const api = {
   runRestconf: (body: {
     yangset: string; device: string; operation: string
     selections: Selection[]; only?: number
+    compose?: ComposeMode; target?: string
   }) => request<RestRunResult>('/restconf/run', { method: 'POST', ...json(body) }),
+
+  /** Send a hand-written request as it stands, with the device's credentials. */
+  sendRestconf: (body: RawRequest & { device: string }) =>
+    request<RestResult>('/restconf/send', { method: 'POST', ...json(body) }),
 
   probeRestconf: (slug: string) =>
     request<{

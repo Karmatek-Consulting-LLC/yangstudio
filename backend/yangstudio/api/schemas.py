@@ -108,12 +108,27 @@ class RestconfBuild(BaseModel):
     operation: str = "GET"          # GET | PUT | PATCH | POST | DELETE
     selections: list[SelectionIn] = Field(default_factory=list)
     modules: list[str] = Field(default_factory=list)
+    # How a write is laid out: "per-node" sends each selected node on its own,
+    # "single" nests them all into one body.
+    compose: str = "per-node"
+    # For "single": the prefixed path of the node the body should start at.
+    # Empty, or no longer valid for the selection, means the planner's default.
+    target: str = ""
 
 
 class RestconfRun(RestconfBuild):
     device: str
     # Run only this one of the planned requests; omit to run them all in order.
     only: int | None = None
+
+
+class RestconfSend(BaseModel):
+    """A request written or edited by hand, sent as it stands."""
+
+    device: str
+    method: str = "GET"
+    url: str
+    body: str = ""
 
 
 class SchemaDownload(BaseModel):

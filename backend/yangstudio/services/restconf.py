@@ -8,6 +8,11 @@ differences shape the code:
   single GET with ``?fields=``; anything else becomes its own request.
 * There is no candidate datastore. Every write lands immediately, so a
   ``merge`` becomes PATCH and a ``replace`` becomes PUT against live config.
+
+A write can be planned two ways. Per node, each selected leaf is its own
+request aimed at its own URL. Composed, every selection is nested into one
+body under a shared node — the only form a device will accept for anything it
+validates as a whole, such as an access-list entry.
 """
 from __future__ import annotations
 
@@ -28,7 +33,10 @@ from ..core.resturl import (
     RestconfError,
     RestRequest,
     build_body,
+    build_nested_body,
     build_path,
+    encode_value,
+    is_empty_leaf,
 )
 from ..core.storage import YangSet
 from . import explorer
@@ -70,16 +78,21 @@ def _chain(row: dict, by_pfx: dict) -> list[PathNode]:
         ancestor = by_pfx.get(path)
         if ancestor is None:
             raise RestconfError(f"no node at {path!r} in this set")
-        nodes.append(
-            PathNode(
-                name=ancestor["name"],
-                module=ancestor.get("module", ""),
-                nodetype=ancestor.get("nodetype", ""),
-                keys=list(ancestor.get("keys") or []),
-                prefix=ancestor.get("prefix", ""),
-            )
-        )
+        nodes.append(_path_node(ancestor))
     return nodes
+
+
+def _path_node(row: dict) -> PathNode:
+    return PathNode(
+        name=row["name"],
+        module=row.get("module", ""),
+        nodetype=row.get("nodetype", ""),
+        keys=list(row.get("keys") or []),
+        prefix=row.get("prefix", ""),
+        # basetype is only recorded when a typedef was followed to get there.
+        basetype=row.get("basetype") or row.get("datatype") or "",
+        union_types=list(row.get("union_types") or []),
+    )
 
 
 def _collect_key_values(selections: list[dict], by_path: dict, by_pfx: dict) -> dict:
@@ -104,13 +117,25 @@ def _collect_key_values(selections: list[dict], by_path: dict, by_pfx: dict) -> 
     return keys
 
 
+# How a write is laid out: one request per selected node, or every selection
+# nested into a single body.
+COMPOSE_MODES = ("per-node", "single")
+
+
 def plan(
     yangset: YangSet,
     selections: list[dict],
     operation: str = "GET",
     modules: list[str] | None = None,
+    compose: str = "per-node",
+    target: str = "",
 ) -> list[RestRequest]:
-    """Turn selections into the RESTCONF calls that express them."""
+    """Turn selections into the RESTCONF calls that express them.
+
+    ``compose`` and ``target`` only bear on PUT, PATCH and POST. A read already
+    folds what it can, and a DELETE of a shared parent would remove far more
+    than was ticked, so both stay one request per resource.
+    """
     if not selections:
         raise RestconfError("no nodes selected")
 
@@ -134,8 +159,16 @@ def plan(
             raise RestconfError(f"{selection.get('xpath')!r} is not in this set")
         resolved.append((selection, row, _chain(row, by_pfx)))
 
+    if compose not in COMPOSE_MODES:
+        raise RestconfError(
+            f"{compose!r} is not a way to compose a request — expected one of "
+            f"{', '.join(COMPOSE_MODES)}"
+        )
+
     if method == "GET":
         return _plan_reads(resolved, by_pfx, key_values)
+    if compose == "single" and method in ("PUT", "PATCH", "POST"):
+        return [_plan_single(resolved, by_pfx, key_values, method, target)]
     return _plan_writes(resolved, key_values, method)
 
 
@@ -235,8 +268,10 @@ def _plan_writes(resolved, key_values: dict, method: str) -> list[RestRequest]:
 
         body = ""
         content_type = ""
-        if node_method in ("PUT", "PATCH", "POST") and selection.get("value"):
-            body = build_body(chain[-1], selection["value"])
+        # An empty leaf has nothing to type: ticking it is the whole statement.
+        writable = selection.get("value") or is_empty_leaf(chain[-1])
+        if node_method in ("PUT", "PATCH", "POST") and writable:
+            body = build_body(chain[-1], selection.get("value") or "")
             content_type = CONTENT_TYPE
         requests.append(
             RestRequest(
@@ -253,6 +288,146 @@ def _plan_writes(resolved, key_values: dict, method: str) -> list[RestRequest]:
             "identify the entry rather than being edited"
         )
     return requests
+
+
+def _parts(row: dict) -> list[str]:
+    return [p for p in row.get("xpath_pfx", "").split("/") if p]
+
+
+def _shared_depth(paths: list[list[str]]) -> int:
+    """How many leading steps every path has in common."""
+    depth = 0
+    for steps in zip(*paths, strict=False):      # Stops at the shortest path.
+        if len(set(steps)) != 1:
+            break
+        depth += 1
+    return depth
+
+
+def _plan_single(resolved, by_pfx: dict, key_values: dict, method: str, target: str) -> RestRequest:
+    """Every selection in one request, nested under the node they share.
+
+    The same change can be written at several levels — a small body deep in
+    the URL, or a larger one higher up — so the plan names every level it
+    could be aimed at and picks one. The default is the deepest node holding
+    every selection, keys included: tick an access list's name, a rule's
+    sequence and the rule's fields, and that is the access-list entry, which is
+    the thing being created. ``target`` moves it; anything it cannot honour
+    falls back to the default rather than failing, since selections change
+    under it as the user ticks nodes.
+    """
+    # Every list on the way to a selection must say which entry it means. In a
+    # URL a list without keys is not a resource, and in a body an entry without
+    # keys is not an entry, so there is no level this could be sent at.
+    for _selection, row, chain in resolved:
+        steps = _parts(row)
+        for index, node in enumerate(chain):
+            if node.nodetype != "list":
+                continue
+            given = key_values.get("/" + "/".join(steps[: index + 1]), {})
+            missing = [k for k in node.keys if not given.get(k)]
+            if missing:
+                raise RestconfError(
+                    f"list {node.name!r} needs a value for its key "
+                    f"{', '.join(repr(k) for k in missing)} — tick the key leaf and "
+                    f"type one, so the request can say which entry it means"
+                )
+
+    def is_key(row: dict, chain: list[PathNode]) -> bool:
+        parent = chain[-2] if len(chain) > 1 else None
+        return parent is not None and parent.nodetype == "list" and row["name"] in parent.keys
+
+    def anchor(members) -> int:
+        """Index of the deepest container or list holding all of ``members``."""
+        depth = _shared_depth([_parts(row) for _s, row, _c in members])
+        if depth and members[0][2][depth - 1].nodetype in ("leaf", "leaf-list"):
+            depth -= 1          # A lone leaf: the body starts at its parent.
+        return depth - 1
+
+    default = anchor(resolved)
+    if default < 0:
+        raise RestconfError(
+            "these nodes share no parent, so no single request can carry them all — "
+            "RESTCONF addresses one subtree per request. Compose them per node instead."
+        )
+
+    # The body may start anywhere from the root down to the deepest node that
+    # still holds everything being written. Keys are addressing, not content:
+    # one above the chosen node simply moves into the URL.
+    content = [item for item in resolved if not is_key(item[1], item[2])] or resolved
+    deepest = max(anchor(content), default)
+    spine = content[0][2]
+    spine_steps = _parts(content[0][1])
+
+    targets = [
+        {
+            "xpath": "/" + "/".join(spine_steps[: index + 1]),
+            "name": spine[index].name,
+            "path": build_path(spine[: index + 1], key_values),
+        }
+        for index in range(deepest + 1)
+    ]
+    chosen = next((i for i, t in enumerate(targets) if t["xpath"] == target), default)
+    chosen_steps = spine_steps[: chosen + 1]
+
+    # Encode each list's keys once, in key order, typed like any other leaf.
+    key_members: dict[str, dict] = {}
+    for list_path, values in key_values.items():
+        list_row = by_pfx.get(list_path)
+        if list_row is None:
+            continue
+        prefix = list_row.get("prefix", "")
+        encoded = {}
+        for key in list_row.get("keys") or []:
+            if not values.get(key):
+                continue
+            key_row = by_pfx.get(f"{list_path}/{prefix}:{key}" if prefix else f"{list_path}/{key}")
+            encoded[key] = (
+                encode_value(_path_node(key_row), values[key]) if key_row else values[key]
+            )
+        key_members[list_path] = encoded
+
+    inside = [
+        (selection, row, chain)
+        for selection, row, chain in resolved
+        if _parts(row)[: chosen + 1] == chosen_steps
+    ]
+    body = build_nested_body(
+        [(chain, selection.get("value") or "") for selection, _row, chain in inside],
+        chosen,
+        key_members,
+    )
+
+    # PUT and PATCH act on the node itself. POST creates it, so it is sent to
+    # the parent — and the datastore is the parent of a top-level node.
+    if method == "POST":
+        path = build_path(spine[:chosen], key_values) if chosen else "/restconf/data"
+    else:
+        path = targets[chosen]["path"]
+
+    notes: list[str] = []
+    if method == "PUT":
+        notes.append(
+            f"PUT replaces everything under {targets[chosen]['name']!r} with this body. "
+            f"Anything already configured there and not listed here is removed — "
+            f"use PATCH to merge instead."
+        )
+    if any((selection.get("operation") or "").strip() for selection, _r, _c in resolved):
+        notes.append(
+            "Per-node operations are not part of this request. One RESTCONF call has "
+            "one method; compose per node to give each node its own."
+        )
+
+    return RestRequest(
+        method=method,
+        path=path,
+        body=body,
+        content_type=CONTENT_TYPE,
+        covers=[row["xpath_pfx"] for _s, row, _c in resolved],
+        notes=notes,
+        target=targets[chosen]["xpath"],
+        targets=targets,
+    )
 
 
 # --------------------------------------------------------------------------
